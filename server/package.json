@@ -1,0 +1,31 @@
+{
+  "name": "family-app-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Family App backend — capture pipeline, rule engine, onboarding/settings/dashboard API.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test tests/**/*.test.js",
+    "migrate": "node src/db/migrate.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.12.0",
+    "json-rules-engine": "^7.3.1",
+    "dotenv": "^16.4.5",
+    "google-auth-library": "^9.14.1",
+    "googleapis": "^140.0.1",
+    "cookie-session": "^2.1.0",
+    "uuid": "^9.0.1",
+    "bcryptjs": "^2.4.3"
+  },
+  "devDependencies": {
+    "pg-mem": "^3.0.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@48,400,1,0&display=swap" rel="stylesheet">
+<script src="./image-slot.js"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#efe9df;font-family:Nunito,system-ui,sans-serif}
+a{color:#2a78d6}a:hover{color:#1b5aa6}
+.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(0,0,0,.08);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}
+.dv-tid{font:700 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#2f2823;color:#fff;border-radius:4px;text-decoration:none}
+.dv-tname{font:700 13px/1.2 Nunito,system-ui,sans-serif;color:#2f2823}
+.dv-opts{display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+.dv-oid{font:700 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#2f2823;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11.5px/1.3 Nunito,system-ui,sans-serif;color:rgba(0,0,0,.55)}
+.dv-card{max-width:100%;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden}
+.dv-opt:target .dv-oid{background:#2a78d6;color:#fff}
+.dv-next{margin:22px 0 0;font:12.5px/1.6 Nunito,system-ui,sans-serif;color:rgba(0,0,0,.55)}
+.ms{font-family:'Material Symbols Rounded';font-weight:400;font-style:normal;line-height:1;letter-spacing:normal;text-transform:none;white-space:nowrap;direction:ltr;font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 48}
+.note{font:400 11px/1.5 ui-monospace,Menlo,monospace;color:rgba(0,0,0,.42);max-width:300px}
+</style>
+</helmet>
+
+<section class="dv-turn" id="t5">
+<div class="dv-thd"><a class="dv-tid" href="#t5">5</a><span class="dv-tname">Full-screen kiosk view of <a href="#3a">3a</a>, with a settings entry point</span></div>
+
+<div style="display:flex;gap:34px;align-items:flex-start;margin:0 0 26px;flex-wrap:wrap">
+<div class="note">SETTINGS BUTTON<br>Small gear, top-right corner, low-contrast until tapped — the board stays a read-only display for the kid; the gear is the parent's quiet way in to edit family members, colors, and connections.</div>
+</div>
+
+<div class="dv-opts">
+
+<div class="dv-opt" id="5a">
+<div class="dv-olabel"><a class="dv-oid" href="#5a">5a</a>Kiosk / propped-tablet — fluid, icons centered in each card, bigger avatars</div>
+<div class="dv-card" style="width:1280px;border-radius:0">
+<div style="width:1280px;height:800px;overflow:hidden;position:relative">
+<div style="position:absolute;inset:0;background:#faf5ec;padding:56px 64px;box-sizing:border-box;display:flex;flex-direction:column">
+
+<div style="position:absolute;top:40px;right:48px;width:56px;height:56px;border-radius:50%;background:rgba(58,49,40,.06);display:flex;align-items:center;justify-content:center">
+<span class="ms" style="font-size:30px;color:rgba(58,49,40,.4)">settings</span>
+</div>
+
+<div style="flex:none;display:flex;align-items:center;justify-content:space-between;margin:0 0 40px;padding-right:80px">
+<div style="display:flex;align-items:center;gap:20px">
+<span class="ms" style="font-size:66px;color:#e8a33d">wb_twilight</span>
+<div style="font:800 50px/1 Nunito,sans-serif;color:#3a3128;letter-spacing:-.5px">Tomorrow</div>
+<div style="font:600 28px/1 Nunito,sans-serif;color:rgba(58,49,40,.42);padding-top:6px">Wednesday</div>
+</div>
+<div style="display:flex;align-items:center;gap:18px">
+<div style="width:84px;height:84px;border-radius:50%;padding:5px;box-sizing:border-box;background:#b3a3d9"><image-slot id="por-mia-5a" shape="circle" style="width:100%;height:100%" placeholder="Mia"></image-slot></div>
+<div style="width:84px;height:84px;border-radius:50%;padding:5px;box-sizing:border-box;background:#e6ab84"><image-slot id="por-theo-5a" shape="circle" style="width:100%;height:100%" placeholder="Theo"></image-slot></div>
+<div style="width:84px;height:84px;border-radius:50%;padding:5px;box-sizing:border-box;background:#a3bf9a"><image-slot id="por-dad-5a" shape="circle" style="width:100%;height:100%" placeholder="Dad"></image-slot></div>
+</div>
+</div>
+
+<div style="flex:1;min-height:0;display:grid;grid-template-columns:repeat(6,1fr);grid-template-rows:1fr;gap:22px">
+<div style="display:flex;align-items:center;justify-content:center;min-height:0;min-width:0"><span class="ms" style="font-size:108px;color:#a89d86">wb_sunny</span></div>
+<div style="background:#b3a3d9;border-radius:32px;padding:28px 22px;display:flex;flex-direction:column;min-height:0;min-width:0"><div style="flex:1;display:flex;align-items:center;justify-content:center"><div style="font:400 108px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif">🎒</div></div><div style="flex:none;font:800 30px/1.1 Nunito,sans-serif;color:#fff;text-align:center">School</div><div style="flex:none;font:700 21px/1 Nunito,sans-serif;color:rgba(255,255,255,.8);text-align:center">8:00 am</div></div>
+<div style="background:#a3bf9a;border-radius:32px;padding:28px 22px;display:flex;flex-direction:column;min-height:0;min-width:0"><div style="flex:1;display:flex;align-items:center;justify-content:center"><div style="font:400 108px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif">🩺</div></div><div style="flex:none;font:800 30px/1.1 Nunito,sans-serif;color:#fff;text-align:center">Doctor</div><div style="flex:none;font:700 21px/1 Nunito,sans-serif;color:rgba(255,255,255,.8);text-align:center">3:30 pm</div></div>
+<div style="background:#b3a3d9;border-radius:32px;padding:28px 22px;display:flex;flex-direction:column;min-height:0;min-width:0"><div style="flex:1;display:flex;align-items:center;justify-content:center"><div style="font:400 108px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif">💃</div></div><div style="flex:none;font:800 30px/1.1 Nunito,sans-serif;color:#fff;text-align:center">Dance</div><div style="flex:none;font:700 21px/1 Nunito,sans-serif;color:rgba(255,255,255,.8);text-align:center">4:00 pm</div></div>
+<div style="border-radius:32px;overflow:hidden;padding:28px 22px;display:flex;flex-direction:column;min-height:0;min-width:0;background:repeating-linear-gradient(135deg,#b3a3d9 0 40px,#e6ab84 40px 80px)"><div style="flex:1;display:flex;align-items:center;justify-content:center"><div style="font:400 108px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;filter:drop-shadow(0 2px 6px rgba(0,0,0,.18))">🎉</div></div><div style="flex:none;font:800 30px/1.1 Nunito,sans-serif;color:#fff;text-align:center;text-shadow:0 1px 4px rgba(0,0,0,.25)">Gabi's birthday</div><div style="flex:none;font:700 21px/1 Nunito,sans-serif;color:rgba(255,255,255,.9);text-shadow:0 1px 4px rgba(0,0,0,.25);text-align:center">5:30 pm</div></div>
+<div style="display:flex;align-items:center;justify-content:center;min-height:0;min-width:0"><span class="ms" style="font-size:108px;color:#a89d86">bedtime</span></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="5b">
+<div class="dv-olabel"><a class="dv-oid" href="#5b">5b</a>Mobile portrait — fluid, avatars in header, 390×812</div>
+<div class="dv-card" style="width:390px;border-radius:34px">
+<div style="width:390px;height:812px;overflow:hidden;position:relative">
+<div style="position:absolute;inset:0;background:#faf5ec;padding:24px 20px;box-sizing:border-box;display:flex;flex-direction:column">
+<div style="flex:none;display:flex;align-items:center;gap:10px;padding:14px 6px">
+<span class="ms" style="font-size:36px;color:#e8a33d">wb_sunny</span>
+<div style="font:800 26px/1 Nunito,sans-serif;color:#3a3128">Tomorrow</div>
+<div style="flex:1"></div>
+<div style="display:flex;gap:7px">
+<div style="width:32px;height:32px;border-radius:50%;background:#b3a3d9"></div>
+<div style="width:32px;height:32px;border-radius:50%;background:#e6ab84"></div>
+<div style="width:32px;height:32px;border-radius:50%;background:#a3bf9a"></div>
+</div>
+<div style="width:40px;height:40px;border-radius:50%;background:rgba(58,49,40,.06);display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:20px;color:rgba(58,49,40,.4)">settings</span></div>
+</div>
+<div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:10px">
+<div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:44px;color:#a89d86">wb_sunny</span></div>
+<div style="flex:1;min-height:0;background:#b3a3d9;border-radius:22px;display:flex;align-items:center;padding:0 18px;gap:16px"><span class="emo" style="font-size:40px">🎒</span><div style="flex:1"></div><div style="text-align:right"><div style="font:800 18px/1.15 Nunito,sans-serif;color:#fff">School</div><div style="font:700 13px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.78)">8:00 am</div></div></div>
+<div style="flex:1;min-height:0;background:#a3bf9a;border-radius:22px;display:flex;align-items:center;padding:0 18px;gap:16px"><span class="emo" style="font-size:40px">🩺</span><div style="flex:1"></div><div style="text-align:right"><div style="font:800 18px/1.15 Nunito,sans-serif;color:#fff">Doctor</div><div style="font:700 13px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.78)">3:30 pm</div></div></div>
+<div style="flex:1;min-height:0;background:#b3a3d9;border-radius:22px;display:flex;align-items:center;padding:0 18px;gap:16px"><span class="emo" style="font-size:40px">💃</span><div style="flex:1"></div><div style="text-align:right"><div style="font:800 18px/1.15 Nunito,sans-serif;color:#fff">Dance</div><div style="font:700 13px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.78)">4:00 pm</div></div></div>
+<div style="flex:1;min-height:0;border-radius:22px;display:flex;align-items:center;padding:0 18px;gap:16px;background:repeating-linear-gradient(135deg,#b3a3d9 0 26px,#e6ab84 26px 52px)"><span class="emo" style="font-size:40px;filter:drop-shadow(0 1px 4px rgba(0,0,0,.18))">🎉</span><div style="flex:1"></div><div style="text-align:right"><div style="font:800 16px/1.15 Nunito,sans-serif;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.25)">Gabi's birthday</div><div style="font:700 13px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.9);text-shadow:0 1px 3px rgba(0,0,0,.25)">5:30 pm</div></div></div>
+<div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:40px;color:#a89d86">bedtime</span></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="5c">
+<div class="dv-olabel"><a class="dv-oid" href="#5c">5c</a>Mobile landscape — matched detail level to 5a: title + time on every card, avatars in header</div>
+<div class="dv-card" style="width:812px;border-radius:26px">
+<div style="width:812px;height:390px;overflow:hidden;position:relative">
+<div style="position:absolute;inset:0;background:#faf5ec;padding:18px 20px;box-sizing:border-box;display:flex;flex-direction:column">
+<div style="flex:none;display:flex;align-items:center;gap:10px;padding:0 0 10px">
+<span class="ms" style="font-size:26px;color:#e8a33d">wb_sunny</span>
+<div style="font:800 20px/1 Nunito,sans-serif;color:#3a3128">Tomorrow</div>
+<div style="flex:1"></div>
+<div style="display:flex;gap:6px">
+<div style="width:26px;height:26px;border-radius:50%;background:#b3a3d9"></div>
+<div style="width:26px;height:26px;border-radius:50%;background:#e6ab84"></div>
+<div style="width:26px;height:26px;border-radius:50%;background:#a3bf9a"></div>
+</div>
+<div style="width:32px;height:32px;border-radius:50%;background:rgba(58,49,40,.06);display:flex;align-items:center;justify-content:center;margin-left:10px"><span class="ms" style="font-size:17px;color:rgba(58,49,40,.4)">settings</span></div>
+</div>
+<div style="flex:1;min-height:0;display:grid;grid-template-columns:repeat(6,1fr);gap:12px">
+<div style="display:flex;align-items:center;justify-content:center;min-height:0;min-width:0;padding:14px 10px"><span class="ms" style="font-size:50px;color:#a89d86">wb_sunny</span></div>
+<div style="background:#b3a3d9;border-radius:20px;display:flex;flex-direction:column;min-height:0;min-width:0;padding:10px 6px"><div style="flex:1;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:44px">🎒</span></div><div style="flex:none;font:800 13px/1.1 Nunito,sans-serif;color:#fff;text-align:center">School</div><div style="flex:none;font:700 11px/1 Nunito,sans-serif;color:rgba(255,255,255,.8);text-align:center">8:00 am</div></div>
+<div style="background:#a3bf9a;border-radius:20px;display:flex;flex-direction:column;min-height:0;min-width:0;padding:10px 6px"><div style="flex:1;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:44px">🩺</span></div><div style="flex:none;font:800 13px/1.1 Nunito,sans-serif;color:#fff;text-align:center">Doctor</div><div style="flex:none;font:700 11px/1 Nunito,sans-serif;color:rgba(255,255,255,.8);text-align:center">3:30 pm</div></div>
+<div style="background:#b3a3d9;border-radius:20px;display:flex;flex-direction:column;min-height:0;min-width:0;padding:10px 6px"><div style="flex:1;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:44px">💃</span></div><div style="flex:none;font:800 13px/1.1 Nunito,sans-serif;color:#fff;text-align:center">Dance</div><div style="flex:none;font:700 11px/1 Nunito,sans-serif;color:rgba(255,255,255,.8);text-align:center">4:00 pm</div></div>
+<div style="border-radius:20px;overflow:hidden;display:flex;flex-direction:column;min-height:0;min-width:0;padding:10px 6px;background:repeating-linear-gradient(135deg,#b3a3d9 0 20px,#e6ab84 20px 40px)">
+<div style="flex:1;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:44px;filter:drop-shadow(0 1px 3px rgba(0,0,0,.18))">🎉</span></div>
+<div style="flex:none;font:800 12px/1.1 Nunito,sans-serif;color:#fff;text-align:center;text-shadow:0 1px 3px rgba(0,0,0,.25)">Gabi's b-day</div>
+<div style="flex:none;font:700 11px/1 Nunito,sans-serif;color:rgba(255,255,255,.9);text-shadow:0 1px 3px rgba(0,0,0,.25);text-align:center">5:30 pm</div>
+</div>
+<div style="display:flex;align-items:center;justify-content:center;min-height:0;min-width:0;padding:14px 10px"><span class="ms" style="font-size:46px;color:#a89d86">bedtime</span></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<p class="dv-next">Sizing now uses container queries (cqw/cqh) so every element scales with the box itself, not just the page — the same markup should hold up at any real device size. Try next: "gear opens a settings panel — show it" · "put the gear bottom-left instead"</p>
+</section>
+
+<section class="dv-turn" id="t4">
+<div class="dv-thd"><a class="dv-tid" href="#t4">4</a><span class="dv-tname">Multi-person activity card — one card, not duplicated per person</span></div>
+
+<div style="display:flex;gap:34px;align-items:flex-start;margin:0 0 26px;flex-wrap:wrap">
+<div class="note">RULE<br>An activity that involves 2+ family members renders as ONE card. The card's color/icon carry the activity; a small avatar cluster carries "who" — same pattern already used on the <a href="#3a">3a</a> bedtime card.</div>
+</div>
+
+<div class="dv-opts">
+
+<div class="dv-opt" id="4a">
+<div class="dv-olabel"><a class="dv-oid" href="#4a">4a</a>Equal-width vertical stripes, one per participant</div>
+<div class="dv-card" style="width:280px;border-radius:26px">
+<div style="border-radius:26px;overflow:hidden;min-height:300px;display:flex;position:relative">
+<div style="flex:1;background:#b3a3d9"></div>
+<div style="flex:1;background:#e6ab84"></div>
+<div style="flex:1;background:#a3bf9a"></div>
+<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;padding:34px 20px 22px;gap:14px">
+<div style="flex:1"></div>
+<div style="font:400 104px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;filter:drop-shadow(0 2px 6px rgba(0,0,0,.18))">🎂</div>
+<div style="flex:1"></div>
+<div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center;text-shadow:0 1px 4px rgba(0,0,0,.2)">Birthday party</div>
+<div style="font:700 18px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.88);min-height:46px;text-align:center;text-shadow:0 1px 4px rgba(0,0,0,.2)">Whole family<br>5:00 pm</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="4b">
+<div class="dv-olabel"><a class="dv-oid" href="#4b">4b</a>Diagonal stripes, repeating</div>
+<div class="dv-card" style="width:280px;border-radius:26px">
+<div style="border-radius:26px;overflow:hidden;min-height:300px;display:flex;flex-direction:column;align-items:center;padding:34px 20px 22px;gap:14px;background:repeating-linear-gradient(135deg,#b3a3d9 0 48px,#e6ab84 48px 96px,#a3bf9a 96px 144px)">
+<div style="flex:1"></div>
+<div style="font:400 104px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;filter:drop-shadow(0 2px 6px rgba(0,0,0,.18))">🎂</div>
+<div style="flex:1"></div>
+<div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center;text-shadow:0 1px 4px rgba(0,0,0,.25)">Birthday party</div>
+<div style="font:700 18px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.9);min-height:46px;text-align:center;text-shadow:0 1px 4px rgba(0,0,0,.25)">Whole family<br>5:00 pm</div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="4c">
+<div class="dv-olabel"><a class="dv-oid" href="#4c">4c</a>Smooth gradient blend across participant colors</div>
+<div class="dv-card" style="width:280px;border-radius:26px">
+<div style="border-radius:26px;overflow:hidden;min-height:300px;display:flex;flex-direction:column;align-items:center;padding:34px 20px 22px;gap:14px;background:linear-gradient(160deg,#b3a3d9,#e6ab84,#a3bf9a)">
+<div style="flex:1"></div>
+<div style="font:400 104px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;filter:drop-shadow(0 2px 6px rgba(0,0,0,.18))">🎂</div>
+<div style="flex:1"></div>
+<div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center;text-shadow:0 1px 4px rgba(0,0,0,.2)">Birthday party</div>
+<div style="font:700 18px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.88);min-height:46px;text-align:center;text-shadow:0 1px 4px rgba(0,0,0,.2)">Whole family<br>5:00 pm</div>
+</div>
+</div>
+</div>
+
+</div>
+
+<div style="flex-basis:100%;height:0"></div>
+
+<div class="dv-opt" id="4d">
+<div class="dv-olabel"><a class="dv-oid" href="#4d">4d</a>4a with 2 participants</div>
+<div class="dv-card" style="width:280px;border-radius:26px">
+<div style="border-radius:26px;overflow:hidden;min-height:300px;display:flex;position:relative">
+<div style="flex:1;background:#b3a3d9"></div>
+<div style="flex:1;background:#a3bf9a"></div>
+<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;padding:34px 20px 22px;gap:14px">
+<div style="flex:1"></div>
+<div style="font:400 104px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;filter:drop-shadow(0 2px 6px rgba(0,0,0,.18))">🎂</div>
+<div style="flex:1"></div>
+<div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center;text-shadow:0 1px 4px rgba(0,0,0,.2)">Birthday party</div>
+<div style="font:700 18px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.88);min-height:46px;text-align:center;text-shadow:0 1px 4px rgba(0,0,0,.2)">Mia &amp; Dad<br>5:00 pm</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="4e">
+<div class="dv-olabel"><a class="dv-oid" href="#4e">4e</a>4b with 2 participants, wider stripes</div>
+<div class="dv-card" style="width:280px;border-radius:26px">
+<div style="border-radius:26px;overflow:hidden;min-height:300px;display:flex;flex-direction:column;align-items:center;padding:34px 20px 22px;gap:14px;background:repeating-linear-gradient(135deg,#b3a3d9 0 48px,#a3bf9a 48px 96px)">
+<div style="flex:1"></div>
+<div style="font:400 104px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;filter:drop-shadow(0 2px 6px rgba(0,0,0,.18))">🎂</div>
+<div style="flex:1"></div>
+<div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center;text-shadow:0 1px 4px rgba(0,0,0,.25)">Birthday party</div>
+<div style="font:700 18px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.9);min-height:46px;text-align:center;text-shadow:0 1px 4px rgba(0,0,0,.25)">Mia &amp; Dad<br>5:00 pm</div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="4f">
+<div class="dv-olabel"><a class="dv-oid" href="#4f">4f</a>4c with 2 participants</div>
+<div class="dv-card" style="width:280px;border-radius:26px">
+<div style="border-radius:26px;overflow:hidden;min-height:300px;display:flex;flex-direction:column;align-items:center;padding:34px 20px 22px;gap:14px;background:linear-gradient(160deg,#b3a3d9,#a3bf9a)">
+<div style="flex:1"></div>
+<div style="font:400 104px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;filter:drop-shadow(0 2px 6px rgba(0,0,0,.18))">🎂</div>
+<div style="flex:1"></div>
+<div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center;text-shadow:0 1px 4px rgba(0,0,0,.2)">Birthday party</div>
+<div style="font:700 18px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.88);min-height:46px;text-align:center;text-shadow:0 1px 4px rgba(0,0,0,.2)">Mia &amp; Dad<br>5:00 pm</div>
+</div>
+</div>
+</div>
+
+<div style="flex-basis:100%;height:0"></div>
+
+<div class="dv-opt" id="4g">
+<div class="dv-olabel"><a class="dv-oid" href="#4g">4g</a>In context — Gabi's birthday party, substituted for the playdate slot</div>
+<div class="dv-card" style="width:1080px;border-radius:28px">
+<div style="background:#faf5ec;padding:34px 36px 38px">
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:18px">
+
+<div style="background:#b3a3d9;border-radius:26px;padding:34px 18px 22px;display:flex;flex-direction:column;align-items:center;gap:14px;min-height:300px">
+<div style="flex:1"></div>
+<div style="font:400 104px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif">🎒</div>
+<div style="flex:1"></div>
+<div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">School</div>
+<div style="font:700 18px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.8);min-height:46px;text-align:center">8:00 am</div>
+</div>
+
+<div style="background:#a3bf9a;border-radius:26px;padding:34px 18px 22px;display:flex;flex-direction:column;align-items:center;gap:14px;min-height:300px">
+<div style="flex:1"></div>
+<div style="font:400 104px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif">🩺</div>
+<div style="flex:1"></div>
+<div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">Doctor</div>
+<div style="font:700 18px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.8);min-height:46px;text-align:center">Check up<br>3:30 pm</div>
+</div>
+
+<div style="background:#b3a3d9;border-radius:26px;padding:34px 18px 22px;display:flex;flex-direction:column;align-items:center;gap:14px;min-height:300px">
+<div style="flex:1"></div>
+<div style="font:400 104px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif">💃</div>
+<div style="flex:1"></div>
+<div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">Dance</div>
+<div style="font:700 18px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.8);min-height:46px;text-align:center">4:00 pm</div>
+</div>
+
+<div style="border-radius:26px;overflow:hidden;min-height:300px;display:flex;flex-direction:column;align-items:center;padding:34px 18px 22px;gap:14px;background:repeating-linear-gradient(135deg,#b3a3d9 0 40px,#e6ab84 40px 80px)">
+<div style="flex:1"></div>
+<div style="font:400 104px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;filter:drop-shadow(0 2px 6px rgba(0,0,0,.18))">🎉</div>
+<div style="flex:1"></div>
+<div style="font:800 24px/1.1 Nunito,sans-serif;color:#fff;text-align:center;text-shadow:0 1px 4px rgba(0,0,0,.25)">Gabi's birthday party</div>
+<div style="font:700 18px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.9);min-height:46px;text-align:center;text-shadow:0 1px 4px rgba(0,0,0,.25)">5:30 pm</div>
+</div>
+
+<div style="background:#3f3550;border-radius:26px;padding:34px 18px 22px;display:flex;flex-direction:column;align-items:center;gap:14px;min-height:300px">
+<div style="flex:1"></div>
+<span class="ms" style="font-size:104px;color:#e8d9a8">bedtime</span>
+<div style="flex:1"></div>
+<div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">Bedtime</div>
+<div style="font:700 18px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.8);min-height:46px;text-align:center">7:30 pm</div>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+<p class="dv-next">4b stripes widened 34px→48px. Recommendation still <a href="#4a">4a</a>/<a href="#4d">4d</a> — equal stripes stay clear at both 2 and 3+ participants. Bedtime stays its own plum, distinct from the multi-color stripe treatment, so it still reads as a different kind of card (end of day) rather than "another shared event." Try next: "pick one pattern and apply across the whole board"</p>
+</section>
+
+<section class="dv-turn" id="t3">
+<div class="dv-thd"><a class="dv-tid" href="#t3">3</a><span class="dv-tname">Back to <a href="#1c">1c</a> — real kid photos in the header, purple instead of blue, dancer icon</span></div>
+
+<div style="display:flex;gap:36px;align-items:flex-start;margin:0 0 26px;flex-wrap:wrap">
+<div class="note">CHANGES<br>· <a href="#1c">1c</a> layout, no number badges<br>· blue → light purple (Mia)<br>· new "Wake up" card bookends the day against bedtime, both flat icons<br>· school / doctor / dance / playdate are unframed emoji<br>· header avatars are real photos ringed in each person's color</div>
+<div class="note">DROP PHOTOS<br>Drag a picture onto any of the three circles top-right. It persists across reloads.</div>
+</div>
+
+<div class="dv-opts">
+
+<div class="dv-opt" id="3a">
+<div class="dv-olabel"><a class="dv-oid" href="#3a">3a</a>1c, revised</div>
+<div class="dv-card" style="width:1240px;border-radius:28px">
+<div style="background:#faf5ec;padding:34px 36px 38px">
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 24px">
+<div style="display:flex;align-items:center;gap:14px">
+<span class="ms" style="font-size:52px;color:#e8a33d">wb_twilight</span>
+<div style="font:800 36px/1 Nunito,sans-serif;color:#3a3128">Tomorrow</div>
+<div style="font:600 22px/1 Nunito,sans-serif;color:rgba(58,49,40,.42);padding-top:4px">Wednesday</div>
+</div>
+<div style="display:flex;align-items:center;gap:14px">
+<div style="width:92px;height:92px;border-radius:50%;padding:6px;box-sizing:border-box;display:flex;line-height:0;background:#b3a3d9;box-shadow:0 2px 6px rgba(58,49,40,.12)">
+<image-slot id="por-mia-3a" shape="circle" style="width:80px;height:80px" placeholder="Mia"></image-slot>
+</div>
+<div style="width:92px;height:92px;border-radius:50%;padding:6px;box-sizing:border-box;display:flex;line-height:0;background:#e6ab84;box-shadow:0 2px 6px rgba(58,49,40,.12)">
+<image-slot id="por-theo-3a" shape="circle" style="width:80px;height:80px" placeholder="Theo"></image-slot>
+</div>
+<div style="width:92px;height:92px;border-radius:50%;padding:6px;box-sizing:border-box;display:flex;line-height:0;background:#a3bf9a;box-shadow:0 2px 6px rgba(58,49,40,.12)">
+<image-slot id="por-dad-3a" shape="circle" style="width:80px;height:80px" placeholder="Dad"></image-slot>
+</div>
+</div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:16px">
+
+<div style="background:#e4ddcd;border-radius:26px;padding:34px 20px 22px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:300px">
+<span class="ms" style="font-size:104px;color:#9c9280">wb_sunny</span>
+</div>
+
+<div style="background:#b3a3d9;border-radius:26px;padding:34px 18px 22px;display:flex;flex-direction:column;align-items:center;gap:14px;min-height:300px">
+<div style="flex:1"></div>
+<div style="font:400 104px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif">🎒</div>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">School</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:700 18px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.8);min-height:46px;text-align:center">8:00 am</div></sc-if>
+</div>
+
+<div style="background:#a3bf9a;border-radius:26px;padding:34px 18px 22px;display:flex;flex-direction:column;align-items:center;gap:14px;min-height:300px">
+<div style="flex:1"></div>
+<div style="font:400 104px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif">🩺</div>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">Doctor</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:700 18px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.8);min-height:46px;text-align:center">Check up<br>3:30 pm</div></sc-if>
+</div>
+
+<div style="background:#b3a3d9;border-radius:26px;padding:34px 18px 22px;display:flex;flex-direction:column;align-items:center;gap:14px;min-height:300px">
+<div style="flex:1"></div>
+<div style="font:400 104px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif">💃</div>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">Dance</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:700 18px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.8);min-height:46px;text-align:center">4:00 pm</div></sc-if>
+</div>
+
+<div style="background:#e6ab84;border-radius:26px;padding:34px 18px 22px;display:flex;flex-direction:column;align-items:center;gap:14px;min-height:300px">
+<div style="flex:1"></div>
+<div style="font:400 104px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif">⚽</div>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">Playdate</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:700 18px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.8);min-height:46px;text-align:center">5:30 pm</div></sc-if>
+</div>
+
+<div style="background:#e4ddcd;border-radius:26px;padding:34px 18px 22px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:300px">
+<span class="ms" style="font-size:104px;color:#9c9280">bedtime</span>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+</div>
+
+<p class="dv-next">Try next: "wake-up card in a softer yellow" · "purple a shade deeper" · "dancer as a line icon, not emoji" · "phone version of 3a"</p>
+</section>
+
+<section class="dv-turn" id="t2">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">Round 2 — building on <a href="#1c">1c</a>: real portraits, mobile, emoji icons</span></div>
+
+<div style="display:flex;gap:36px;align-items:flex-start;margin:0 0 26px;flex-wrap:wrap">
+<div class="note">FROM HER FEEDBACK<br>· clocks removed everywhere<br>· ribbon concept dropped<br>· card count still 5, detail per card reduced further</div>
+<div class="note">PORTRAITS<br>Drop a photo on any circle — it persists. Ring color = that person's color, so the photo and the color say the same thing twice.</div>
+<div class="note">OPEN<br>The 1–5 order badges from <a href="#1c">1c</a> are gone — the portrait took that spot. Worth re-testing whether she still read the order left to right.</div>
+</div>
+
+<div class="dv-opts">
+
+<!-- ============ 2a ============ -->
+<div class="dv-opt" id="2a">
+<div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a>1c + portrait photos — kitchen tablet, landscape</div>
+<div class="dv-card" style="width:1080px;border-radius:28px">
+<div style="background:#faf5ec;padding:34px 36px 38px">
+<div style="display:flex;align-items:center;gap:14px;margin:0 0 26px">
+<span class="ms" style="font-size:52px;color:#e8a33d">wb_sunny</span>
+<div style="font:800 36px/1 Nunito,sans-serif;color:#3a3128">Tomorrow</div>
+<div style="font:600 22px/1 Nunito,sans-serif;color:rgba(58,49,40,.42);padding-top:4px">Wednesday</div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:18px">
+
+<div style="background:#8fb6de;border-radius:26px;padding:22px 18px 22px;display:flex;flex-direction:column;align-items:center;gap:16px;min-height:330px">
+<div style="width:88px;height:88px;border-radius:50%;padding:5px;background:#fff;box-shadow:0 2px 6px rgba(58,49,40,.14)">
+
+</div>
+<span class="ms" style="font-size:104px;color:#fff">backpack</span>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">School</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:700 18px/1 Nunito,sans-serif;color:rgba(255,255,255,.78)">8:00 am</div></sc-if>
+</div>
+
+<div style="background:#a3bf9a;border-radius:26px;padding:22px 18px 22px;display:flex;flex-direction:column;align-items:center;gap:16px;min-height:330px">
+<div style="width:88px;height:88px;border-radius:50%;padding:5px;background:#fff;box-shadow:0 2px 6px rgba(58,49,40,.14)">
+
+</div>
+<span class="ms" style="font-size:104px;color:#fff">directions_car</span>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">Pickup</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:700 18px/1 Nunito,sans-serif;color:rgba(255,255,255,.78)">3:30 pm</div></sc-if>
+</div>
+
+<div style="background:#8fb6de;border-radius:26px;padding:22px 18px 22px;display:flex;flex-direction:column;align-items:center;gap:16px;min-height:330px">
+<div style="width:88px;height:88px;border-radius:50%;padding:5px;background:#fff;box-shadow:0 2px 6px rgba(58,49,40,.14)">
+
+</div>
+<span class="ms" style="font-size:104px;color:#fff">sports_gymnastics</span>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">Dance</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:700 18px/1 Nunito,sans-serif;color:rgba(255,255,255,.78)">4:00 pm</div></sc-if>
+</div>
+
+<div style="background:#e6ab84;border-radius:26px;padding:22px 18px 22px;display:flex;flex-direction:column;align-items:center;gap:16px;min-height:330px">
+<div style="width:88px;height:88px;border-radius:50%;padding:5px;background:#fff;box-shadow:0 2px 6px rgba(58,49,40,.14)">
+
+</div>
+<span class="ms" style="font-size:104px;color:#fff">sports_soccer</span>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">Playdate</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:700 18px/1 Nunito,sans-serif;color:rgba(255,255,255,.78)">5:30 pm</div></sc-if>
+</div>
+
+<div style="background:#3f3550;border-radius:26px;padding:22px 18px 22px;display:flex;flex-direction:column;align-items:center;gap:16px;min-height:330px">
+<div style="display:flex;align-items:center">
+<div style="width:88px;height:88px;border-radius:50%;padding:5px;background:#8fb6de;box-shadow:0 2px 6px rgba(58,49,40,.2)">
+
+</div>
+<div style="width:88px;height:88px;border-radius:50%;padding:5px;background:#e6ab84;margin-left:-26px;box-shadow:0 2px 6px rgba(58,49,40,.2)">
+
+</div>
+</div>
+<span class="ms" style="font-size:104px;color:#e8d9a8">bedtime</span>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">Bedtime</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:700 18px/1 Nunito,sans-serif;color:rgba(255,255,255,.78)">7:30 pm</div></sc-if>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+<!-- ============ 2b ============ -->
+<div class="dv-opt" id="2b">
+<div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a>Same cards on a phone — 390pt, no scroll</div>
+<div class="dv-card" style="width:390px;border-radius:34px">
+<div style="background:#faf5ec;padding:16px 16px 20px;height:812px;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden">
+<div style="height:12px;flex:none"></div>
+<div style="display:flex;align-items:center;gap:10px;padding:8px 6px 14px">
+<span class="ms" style="font-size:36px;color:#e8a33d">wb_sunny</span>
+<div style="font:800 26px/1 Nunito,sans-serif;color:#3a3128">Tomorrow</div>
+<div style="font:600 16px/1 Nunito,sans-serif;color:rgba(58,49,40,.42);padding-top:3px">Wed</div>
+</div>
+
+<div style="flex:1;display:flex;flex-direction:column;gap:8px;min-height:0">
+
+<div style="flex:1;min-height:0;background:#8fb6de;border-radius:22px;padding:0 18px;display:flex;align-items:center;gap:18px">
+<div style="width:84px;height:84px;border-radius:50%;padding:4px;background:#fff;flex:none">
+
+</div>
+<span class="ms" style="font-size:64px;color:#fff">backpack</span>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="text-align:right"><div style="font:800 22px/1.1 Nunito,sans-serif;color:#fff">School</div><div style="font:700 15px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.78)">8:00 am</div></div></sc-if>
+</div>
+
+<div style="flex:1;min-height:0;background:#a3bf9a;border-radius:22px;padding:0 18px;display:flex;align-items:center;gap:18px">
+<div style="width:84px;height:84px;border-radius:50%;padding:4px;background:#fff;flex:none">
+
+</div>
+<span class="ms" style="font-size:64px;color:#fff">directions_car</span>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="text-align:right"><div style="font:800 22px/1.1 Nunito,sans-serif;color:#fff">Pickup</div><div style="font:700 15px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.78)">3:30 pm</div></div></sc-if>
+</div>
+
+<div style="flex:1;min-height:0;background:#8fb6de;border-radius:22px;padding:0 18px;display:flex;align-items:center;gap:18px">
+<div style="width:84px;height:84px;border-radius:50%;padding:4px;background:#fff;flex:none">
+
+</div>
+<span class="ms" style="font-size:64px;color:#fff">sports_gymnastics</span>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="text-align:right"><div style="font:800 22px/1.1 Nunito,sans-serif;color:#fff">Dance</div><div style="font:700 15px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.78)">4:00 pm</div></div></sc-if>
+</div>
+
+<div style="flex:1;min-height:0;background:#e6ab84;border-radius:22px;padding:0 18px;display:flex;align-items:center;gap:18px">
+<div style="width:84px;height:84px;border-radius:50%;padding:4px;background:#fff;flex:none">
+
+</div>
+<span class="ms" style="font-size:64px;color:#fff">sports_soccer</span>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="text-align:right"><div style="font:800 22px/1.1 Nunito,sans-serif;color:#fff">Playdate</div><div style="font:700 15px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.78)">5:30 pm</div></div></sc-if>
+</div>
+
+<div style="flex:1;min-height:0;background:#3f3550;border-radius:22px;padding:0 18px;display:flex;align-items:center;gap:18px">
+<div style="display:flex;flex:none">
+<div style="width:84px;height:84px;border-radius:50%;padding:4px;background:#8fb6de">
+
+</div>
+<div style="width:84px;height:84px;border-radius:50%;padding:4px;background:#e6ab84;margin-left:-24px">
+
+</div>
+</div>
+<span class="ms" style="font-size:64px;color:#e8d9a8">bedtime</span>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="text-align:right"><div style="font:800 22px/1.1 Nunito,sans-serif;color:#fff">Bedtime</div><div style="font:700 15px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.78)">7:30 pm</div></div></sc-if>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+<!-- ============ 2c ============ -->
+<div class="dv-opt" id="2c">
+<div class="dv-olabel"><a class="dv-oid" href="#2c">2c</a>Emoji icon set instead of line icons</div>
+<div class="dv-card" style="width:1080px;border-radius:28px">
+<div style="background:#faf5ec;padding:34px 36px 38px">
+<div style="display:flex;align-items:center;gap:14px;margin:0 0 26px">
+<div style="font:400 46px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif">☀️</div>
+<div style="font:800 36px/1 Nunito,sans-serif;color:#3a3128">Tomorrow</div>
+<div style="font:600 22px/1 Nunito,sans-serif;color:rgba(58,49,40,.42);padding-top:4px">Wednesday</div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:18px">
+
+<div style="background:#8fb6de;border-radius:26px;padding:22px 18px;display:flex;flex-direction:column;align-items:center;gap:14px;min-height:330px">
+<div style="width:88px;height:88px;border-radius:50%;padding:5px;background:#fff;box-shadow:0 2px 6px rgba(58,49,40,.14)">
+
+</div>
+<div style="width:132px;height:132px;border-radius:32px;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;font:400 84px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif">🎒</div>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">School</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:700 18px/1 Nunito,sans-serif;color:rgba(255,255,255,.78)">8:00 am</div></sc-if>
+</div>
+
+<div style="background:#a3bf9a;border-radius:26px;padding:22px 18px;display:flex;flex-direction:column;align-items:center;gap:14px;min-height:330px">
+<div style="width:88px;height:88px;border-radius:50%;padding:5px;background:#fff;box-shadow:0 2px 6px rgba(58,49,40,.14)">
+
+</div>
+<div style="width:132px;height:132px;border-radius:32px;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;font:400 84px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif">🚗</div>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">Pickup</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:700 18px/1 Nunito,sans-serif;color:rgba(255,255,255,.78)">3:30 pm</div></sc-if>
+</div>
+
+<div style="background:#8fb6de;border-radius:26px;padding:22px 18px;display:flex;flex-direction:column;align-items:center;gap:14px;min-height:330px">
+<div style="width:88px;height:88px;border-radius:50%;padding:5px;background:#fff;box-shadow:0 2px 6px rgba(58,49,40,.14)">
+
+</div>
+<div style="width:132px;height:132px;border-radius:32px;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;font:400 84px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif">💃</div>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">Dance</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:700 18px/1 Nunito,sans-serif;color:rgba(255,255,255,.78)">4:00 pm</div></sc-if>
+</div>
+
+<div style="background:#e6ab84;border-radius:26px;padding:22px 18px;display:flex;flex-direction:column;align-items:center;gap:14px;min-height:330px">
+<div style="width:88px;height:88px;border-radius:50%;padding:5px;background:#fff;box-shadow:0 2px 6px rgba(58,49,40,.14)">
+
+</div>
+<div style="width:132px;height:132px;border-radius:32px;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;font:400 84px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif">⚽</div>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">Playdate</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:700 18px/1 Nunito,sans-serif;color:rgba(255,255,255,.78)">5:30 pm</div></sc-if>
+</div>
+
+<div style="background:#3f3550;border-radius:26px;padding:22px 18px;display:flex;flex-direction:column;align-items:center;gap:14px;min-height:330px">
+<div style="display:flex;align-items:center">
+<div style="width:88px;height:88px;border-radius:50%;padding:5px;background:#8fb6de;box-shadow:0 2px 6px rgba(58,49,40,.2)">
+
+</div>
+<div style="width:88px;height:88px;border-radius:50%;padding:5px;background:#e6ab84;margin-left:-26px;box-shadow:0 2px 6px rgba(58,49,40,.2)">
+
+</div>
+</div>
+<div style="width:132px;height:132px;border-radius:32px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font:400 84px/1 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif">🌙</div>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">Bedtime</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:700 18px/1 Nunito,sans-serif;color:rgba(255,255,255,.78)">7:30 pm</div></sc-if>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+</div>
+
+<p class="dv-next">Try next: "2a with 4 cards instead of 5" · "emoji in circles, not squares" · "phone version stacked in 2 columns" · "drop the times entirely"</p>
+</section>
+
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Tomorrow's schedule — kid-facing, read-only (first draft)</span></div>
+
+<div style="display:flex;gap:36px;align-items:flex-start;margin:0 0 26px;flex-wrap:wrap">
+<div class="note">ASSUMPTIONS<br>· 5 activities max, time order<br>· color band = family member<br>· icon carries meaning; words/time are decoration for adults<br>· no taps, no nav, no scroll — one screenful</div>
+<div class="note">FAMILY COLOR KEY<br>· soft blue = Mia (kid)<br>· soft apricot = Theo (kid)<br>· soft sage = Dad<br>· plum = whole family / bedtime</div>
+<div class="note">NON-READING CUES USED<br>· analog clock face (compare hand angles)<br>· sun → sunset → moon day arc<br>· face avatar + color per person<br>· icons: Material Symbols placeholders for a real illustrated set</div>
+</div>
+
+<div class="dv-opts">
+
+<!-- ============ 1a ============ -->
+<div class="dv-opt" id="1a">
+<div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>Stacked cards — icon tile + person band, tablet portrait</div>
+<div class="dv-card" style="width:800px;border-radius:28px">
+<div style="background:#faf5ec;padding:38px 40px 44px">
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 30px">
+<div style="display:flex;align-items:center;gap:18px">
+<span class="ms" style="font-size:64px;color:#e8a33d">wb_sunny</span>
+<div style="display:flex;flex-direction:column;gap:2px">
+<div style="font:800 40px/1 Nunito,sans-serif;color:#3a3128;letter-spacing:-.5px">Tomorrow</div>
+<div style="font:600 20px/1.2 Nunito,sans-serif;color:rgba(58,49,40,.5)">Wednesday, Aug 12</div>
+</div>
+</div>
+<div style="display:flex;gap:10px;align-items:flex-end">
+<div style="width:22px;height:22px;border-radius:50%;background:rgba(58,49,40,.13)"></div>
+<div style="width:22px;height:22px;border-radius:50%;background:rgba(58,49,40,.13)"></div>
+<div style="width:34px;height:34px;border-radius:50%;background:#e8a33d;box-shadow:0 0 0 8px rgba(232,163,61,.18)"></div>
+<div style="width:22px;height:22px;border-radius:50%;background:rgba(58,49,40,.13)"></div>
+<div style="width:22px;height:22px;border-radius:50%;background:rgba(58,49,40,.13)"></div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:18px">
+
+<div style="display:flex;align-items:stretch;background:#fff;border-radius:24px;overflow:hidden;box-shadow:0 3px 10px rgba(58,49,40,.07)">
+<div style="width:16px;background:#8fb6de"></div>
+<div style="flex:1;display:flex;align-items:center;gap:26px;padding:20px 26px">
+<div style="width:118px;height:118px;border-radius:26px;background:#e6effa;display:flex;align-items:center;justify-content:center;flex:none">
+<span class="ms" style="font-size:78px;color:#4a7fae">backpack</span>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:6px">
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 34px/1.1 Nunito,sans-serif;color:#3a3128">School</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:600 20px/1.2 Nunito,sans-serif;color:rgba(58,49,40,.45)">8:00 in the morning</div></sc-if>
+</div>
+<sc-if value="{{ showClocks }}" hint-placeholder-val="{{ true }}">
+<div style="position:relative;width:62px;height:62px;border-radius:50%;background:#faf5ec;border:4px solid rgba(58,49,40,.14);flex:none">
+<div style="position:absolute;left:50%;top:50%;width:5px;height:17px;background:#3a3128;border-radius:3px;transform-origin:50% 100%;transform:translate(-50%,-100%) rotate(240deg)"></div>
+<div style="position:absolute;left:50%;top:50%;width:4px;height:23px;background:rgba(58,49,40,.45);border-radius:3px;transform-origin:50% 100%;transform:translate(-50%,-100%) rotate(0deg)"></div>
+</div>
+</sc-if>
+<div style="width:64px;height:64px;border-radius:50%;background:#8fb6de;display:flex;align-items:center;justify-content:center;flex:none">
+<span class="ms" style="font-size:44px;color:#fff">face_3</span>
+</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:stretch;background:#fff;border-radius:24px;overflow:hidden;box-shadow:0 3px 10px rgba(58,49,40,.07)">
+<div style="width:16px;background:#a3bf9a"></div>
+<div style="flex:1;display:flex;align-items:center;gap:26px;padding:20px 26px">
+<div style="width:118px;height:118px;border-radius:26px;background:#ecf2e8;display:flex;align-items:center;justify-content:center;flex:none">
+<span class="ms" style="font-size:78px;color:#5f7f56">directions_car</span>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:6px">
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 34px/1.1 Nunito,sans-serif;color:#3a3128">Dad picks you up</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:600 20px/1.2 Nunito,sans-serif;color:rgba(58,49,40,.45)">3:30 after school</div></sc-if>
+</div>
+<sc-if value="{{ showClocks }}" hint-placeholder-val="{{ true }}">
+<div style="position:relative;width:62px;height:62px;border-radius:50%;background:#faf5ec;border:4px solid rgba(58,49,40,.14);flex:none">
+<div style="position:absolute;left:50%;top:50%;width:5px;height:17px;background:#3a3128;border-radius:3px;transform-origin:50% 100%;transform:translate(-50%,-100%) rotate(105deg)"></div>
+<div style="position:absolute;left:50%;top:50%;width:4px;height:23px;background:rgba(58,49,40,.45);border-radius:3px;transform-origin:50% 100%;transform:translate(-50%,-100%) rotate(180deg)"></div>
+</div>
+</sc-if>
+<div style="width:64px;height:64px;border-radius:50%;background:#a3bf9a;display:flex;align-items:center;justify-content:center;flex:none">
+<span class="ms" style="font-size:44px;color:#fff">face_6</span>
+</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:stretch;background:#fff;border-radius:24px;overflow:hidden;box-shadow:0 3px 10px rgba(58,49,40,.07)">
+<div style="width:16px;background:#8fb6de"></div>
+<div style="flex:1;display:flex;align-items:center;gap:26px;padding:20px 26px">
+<div style="width:118px;height:118px;border-radius:26px;background:#e6effa;display:flex;align-items:center;justify-content:center;flex:none">
+<span class="ms" style="font-size:78px;color:#4a7fae">sports_gymnastics</span>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:6px">
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 34px/1.1 Nunito,sans-serif;color:#3a3128">Dance class</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:600 20px/1.2 Nunito,sans-serif;color:rgba(58,49,40,.45)">4:00 in the afternoon</div></sc-if>
+</div>
+<sc-if value="{{ showClocks }}" hint-placeholder-val="{{ true }}">
+<div style="position:relative;width:62px;height:62px;border-radius:50%;background:#faf5ec;border:4px solid rgba(58,49,40,.14);flex:none">
+<div style="position:absolute;left:50%;top:50%;width:5px;height:17px;background:#3a3128;border-radius:3px;transform-origin:50% 100%;transform:translate(-50%,-100%) rotate(120deg)"></div>
+<div style="position:absolute;left:50%;top:50%;width:4px;height:23px;background:rgba(58,49,40,.45);border-radius:3px;transform-origin:50% 100%;transform:translate(-50%,-100%) rotate(0deg)"></div>
+</div>
+</sc-if>
+<div style="width:64px;height:64px;border-radius:50%;background:#8fb6de;display:flex;align-items:center;justify-content:center;flex:none">
+<span class="ms" style="font-size:44px;color:#fff">face_3</span>
+</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:stretch;background:#fff;border-radius:24px;overflow:hidden;box-shadow:0 3px 10px rgba(58,49,40,.07)">
+<div style="width:16px;background:#e6ab84"></div>
+<div style="flex:1;display:flex;align-items:center;gap:26px;padding:20px 26px">
+<div style="width:118px;height:118px;border-radius:26px;background:#faeee5;display:flex;align-items:center;justify-content:center;flex:none">
+<span class="ms" style="font-size:78px;color:#b4744a">sports_soccer</span>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:6px">
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 34px/1.1 Nunito,sans-serif;color:#3a3128">Playdate with Sam</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:600 20px/1.2 Nunito,sans-serif;color:rgba(58,49,40,.45)">5:30 before dinner</div></sc-if>
+</div>
+<sc-if value="{{ showClocks }}" hint-placeholder-val="{{ true }}">
+<div style="position:relative;width:62px;height:62px;border-radius:50%;background:#faf5ec;border:4px solid rgba(58,49,40,.14);flex:none">
+<div style="position:absolute;left:50%;top:50%;width:5px;height:17px;background:#3a3128;border-radius:3px;transform-origin:50% 100%;transform:translate(-50%,-100%) rotate(165deg)"></div>
+<div style="position:absolute;left:50%;top:50%;width:4px;height:23px;background:rgba(58,49,40,.45);border-radius:3px;transform-origin:50% 100%;transform:translate(-50%,-100%) rotate(180deg)"></div>
+</div>
+</sc-if>
+<div style="width:64px;height:64px;border-radius:50%;background:#e6ab84;display:flex;align-items:center;justify-content:center;flex:none">
+<span class="ms" style="font-size:44px;color:#fff">face_2</span>
+</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:stretch;background:#3f3550;border-radius:24px;overflow:hidden;box-shadow:0 3px 10px rgba(58,49,40,.12)">
+<div style="width:16px;background:#a291bd"></div>
+<div style="flex:1;display:flex;align-items:center;gap:26px;padding:20px 26px">
+<div style="width:118px;height:118px;border-radius:26px;background:rgba(255,255,255,.11);display:flex;align-items:center;justify-content:center;flex:none">
+<span class="ms" style="font-size:78px;color:#e8d9a8">bedtime</span>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:6px">
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 34px/1.1 Nunito,sans-serif;color:#fff">Bedtime</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:600 20px/1.2 Nunito,sans-serif;color:rgba(255,255,255,.5)">7:30 — lights out</div></sc-if>
+</div>
+<sc-if value="{{ showClocks }}" hint-placeholder-val="{{ true }}">
+<div style="position:relative;width:62px;height:62px;border-radius:50%;background:rgba(255,255,255,.1);border:4px solid rgba(255,255,255,.2);flex:none">
+<div style="position:absolute;left:50%;top:50%;width:5px;height:17px;background:#fff;border-radius:3px;transform-origin:50% 100%;transform:translate(-50%,-100%) rotate(225deg)"></div>
+<div style="position:absolute;left:50%;top:50%;width:4px;height:23px;background:rgba(255,255,255,.5);border-radius:3px;transform-origin:50% 100%;transform:translate(-50%,-100%) rotate(180deg)"></div>
+</div>
+</sc-if>
+<div style="display:flex;flex:none">
+<div style="width:64px;height:64px;border-radius:50%;background:#8fb6de;display:flex;align-items:center;justify-content:center;border:4px solid #3f3550">
+<span class="ms" style="font-size:40px;color:#fff">face_3</span>
+</div>
+<div style="width:64px;height:64px;border-radius:50%;background:#e6ab84;display:flex;align-items:center;justify-content:center;border:4px solid #3f3550;margin-left:-22px">
+<span class="ms" style="font-size:40px;color:#fff">face_2</span>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+<!-- ============ 1b ============ -->
+<div class="dv-opt" id="1b">
+<div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>Day ribbon — sun-to-moon rail, icon circles hang off the line</div>
+<div class="dv-card" style="width:760px;border-radius:28px">
+<div style="background:#f6efe4;padding:36px 40px 40px">
+
+<div style="display:flex;align-items:center;gap:16px;margin:0 0 26px">
+<div style="width:70px;height:70px;border-radius:50%;background:#f5dfae;display:flex;align-items:center;justify-content:center">
+<span class="ms" style="font-size:46px;color:#c98a2c">calendar_today</span>
+</div>
+<div style="display:flex;flex-direction:column">
+<div style="font:800 38px/1.05 Nunito,sans-serif;color:#3a3128">Tomorrow</div>
+<div style="font:600 19px/1.3 Nunito,sans-serif;color:rgba(58,49,40,.48)">Wednesday</div>
+</div>
+</div>
+
+<div style="position:relative;padding-left:96px">
+<div style="position:absolute;left:44px;top:26px;bottom:26px;width:10px;border-radius:6px;background:linear-gradient(#f0cf8e,#e6ab84 45%,#a291bd)"></div>
+
+<div style="position:absolute;left:22px;top:-6px;width:54px;height:54px;border-radius:50%;background:#f0cf8e;display:flex;align-items:center;justify-content:center">
+<span class="ms" style="font-size:34px;color:#fff">wb_sunny</span>
+</div>
+<div style="position:absolute;left:22px;bottom:-6px;width:54px;height:54px;border-radius:50%;background:#a291bd;display:flex;align-items:center;justify-content:center">
+<span class="ms" style="font-size:34px;color:#fff">nights_stay</span>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:22px;padding:56px 0">
+
+<div style="display:flex;align-items:center;gap:22px">
+<div style="width:132px;height:132px;border-radius:50%;background:#fff;border:12px solid #8fb6de;display:flex;align-items:center;justify-content:center;flex:none;box-shadow:0 4px 12px rgba(58,49,40,.08)">
+<span class="ms" style="font-size:74px;color:#4a7fae">backpack</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:4px">
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 32px/1.1 Nunito,sans-serif;color:#3a3128">School</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:600 19px/1.2 Nunito,sans-serif;color:rgba(58,49,40,.45)">8:00 am · Mia</div></sc-if>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;gap:22px">
+<div style="width:132px;height:132px;border-radius:50%;background:#fff;border:12px solid #a3bf9a;display:flex;align-items:center;justify-content:center;flex:none;box-shadow:0 4px 12px rgba(58,49,40,.08)">
+<span class="ms" style="font-size:74px;color:#5f7f56">directions_car</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:4px">
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 32px/1.1 Nunito,sans-serif;color:#3a3128">Pickup</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:600 19px/1.2 Nunito,sans-serif;color:rgba(58,49,40,.45)">3:30 pm · Dad</div></sc-if>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;gap:22px">
+<div style="width:132px;height:132px;border-radius:50%;background:#fff;border:12px solid #8fb6de;display:flex;align-items:center;justify-content:center;flex:none;box-shadow:0 4px 12px rgba(58,49,40,.08)">
+<span class="ms" style="font-size:74px;color:#4a7fae">sports_gymnastics</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:4px">
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 32px/1.1 Nunito,sans-serif;color:#3a3128">Dance</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:600 19px/1.2 Nunito,sans-serif;color:rgba(58,49,40,.45)">4:00 pm · Mia</div></sc-if>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;gap:22px">
+<div style="width:132px;height:132px;border-radius:50%;background:#fff;border:12px solid #e6ab84;display:flex;align-items:center;justify-content:center;flex:none;box-shadow:0 4px 12px rgba(58,49,40,.08)">
+<span class="ms" style="font-size:74px;color:#b4744a">sports_soccer</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:4px">
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 32px/1.1 Nunito,sans-serif;color:#3a3128">Playdate</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:600 19px/1.2 Nunito,sans-serif;color:rgba(58,49,40,.45)">5:30 pm · Theo</div></sc-if>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;gap:22px">
+<div style="width:132px;height:132px;border-radius:50%;background:#3f3550;border:12px solid #a291bd;display:flex;align-items:center;justify-content:center;flex:none;box-shadow:0 4px 12px rgba(58,49,40,.08)">
+<span class="ms" style="font-size:74px;color:#e8d9a8">bedtime</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:4px">
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 32px/1.1 Nunito,sans-serif;color:#3a3128">Bedtime</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:600 19px/1.2 Nunito,sans-serif;color:rgba(58,49,40,.45)">7:30 pm · everyone</div></sc-if>
+</div>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- ============ 1c ============ -->
+<div class="dv-opt" id="1c">
+<div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>Big tiles — full color fill per person, landscape kitchen tablet</div>
+<div class="dv-card" style="width:1080px;border-radius:28px">
+<div style="background:#faf5ec;padding:34px 36px 38px">
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 24px">
+<div style="display:flex;align-items:center;gap:14px">
+<span class="ms" style="font-size:52px;color:#e8a33d">wb_twilight</span>
+<div style="font:800 36px/1 Nunito,sans-serif;color:#3a3128">Tomorrow</div>
+<div style="font:600 22px/1 Nunito,sans-serif;color:rgba(58,49,40,.42);padding-top:4px">Wednesday</div>
+</div>
+<div style="display:flex;align-items:center;gap:12px">
+<div style="width:46px;height:46px;border-radius:50%;background:#8fb6de;display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:32px;color:#fff">face_3</span></div>
+<div style="width:46px;height:46px;border-radius:50%;background:#e6ab84;display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:32px;color:#fff">face_2</span></div>
+<div style="width:46px;height:46px;border-radius:50%;background:#a3bf9a;display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:32px;color:#fff">face_6</span></div>
+</div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:18px">
+
+<div style="background:#8fb6de;border-radius:26px;padding:26px 20px 22px;display:flex;flex-direction:column;align-items:center;gap:14px;min-height:300px">
+<div style="width:66px;height:66px;border-radius:50%;background:rgba(255,255,255,.9);display:flex;align-items:center;justify-content:center;font:800 26px/1 Nunito,sans-serif;color:#4a7fae">1</div>
+<span class="ms" style="font-size:104px;color:#fff">backpack</span>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">School</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:700 18px/1 Nunito,sans-serif;color:rgba(255,255,255,.78)">8:00 am</div></sc-if>
+</div>
+
+<div style="background:#a3bf9a;border-radius:26px;padding:26px 20px 22px;display:flex;flex-direction:column;align-items:center;gap:14px;min-height:300px">
+<div style="width:66px;height:66px;border-radius:50%;background:rgba(255,255,255,.9);display:flex;align-items:center;justify-content:center;font:800 26px/1 Nunito,sans-serif;color:#5f7f56">2</div>
+<span class="ms" style="font-size:104px;color:#fff">directions_car</span>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">Pickup</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:700 18px/1 Nunito,sans-serif;color:rgba(255,255,255,.78)">3:30 pm</div></sc-if>
+</div>
+
+<div style="background:#8fb6de;border-radius:26px;padding:26px 20px 22px;display:flex;flex-direction:column;align-items:center;gap:14px;min-height:300px">
+<div style="width:66px;height:66px;border-radius:50%;background:rgba(255,255,255,.9);display:flex;align-items:center;justify-content:center;font:800 26px/1 Nunito,sans-serif;color:#4a7fae">3</div>
+<span class="ms" style="font-size:104px;color:#fff">sports_gymnastics</span>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">Dance</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:700 18px/1 Nunito,sans-serif;color:rgba(255,255,255,.78)">4:00 pm</div></sc-if>
+</div>
+
+<div style="background:#e6ab84;border-radius:26px;padding:26px 20px 22px;display:flex;flex-direction:column;align-items:center;gap:14px;min-height:300px">
+<div style="width:66px;height:66px;border-radius:50%;background:rgba(255,255,255,.9);display:flex;align-items:center;justify-content:center;font:800 26px/1 Nunito,sans-serif;color:#b4744a">4</div>
+<span class="ms" style="font-size:104px;color:#fff">sports_soccer</span>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">Playdate</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:700 18px/1 Nunito,sans-serif;color:rgba(255,255,255,.78)">5:30 pm</div></sc-if>
+</div>
+
+<div style="background:#3f3550;border-radius:26px;padding:26px 20px 22px;display:flex;flex-direction:column;align-items:center;gap:14px;min-height:300px">
+<div style="width:66px;height:66px;border-radius:50%;background:rgba(255,255,255,.9);display:flex;align-items:center;justify-content:center;font:800 26px/1 Nunito,sans-serif;color:#3f3550">5</div>
+<span class="ms" style="font-size:104px;color:#e8d9a8">bedtime</span>
+<div style="flex:1"></div>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:800 26px/1.1 Nunito,sans-serif;color:#fff;text-align:center">Bedtime</div></sc-if>
+<sc-if value="{{ showWordLabels }}" hint-placeholder-val="{{ true }}"><div style="font:700 18px/1 Nunito,sans-serif;color:rgba(255,255,255,.78)">7:30 pm</div></sc-if>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+
+</div>
+
+<p class="dv-next">Try next: "1a but swap the clock for a sun/moon marker" · "1c with only 4 tiles and bigger icons" · "warmer, less blue palette across all three" · "new directions for how time reads without words"</p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showWordLabels&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Kid-readability test&quot;},&quot;showClocks&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Kid-readability test&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      showWordLabels: this.props.showWordLabels ?? true,
+      showClocks: this.props.showClocks ?? true,
+    };
+  }
+}
+</script>
+</body>
+</html>

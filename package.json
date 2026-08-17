@@ -1,0 +1,21 @@
+{
+  "name": "family-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Family App — WhatsApp capture-to-calendar pipeline, kid dashboard, onboarding, Settings Home. Phase 1 MVP.",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace=web",
+    "start": "npm run start --workspace=server",
+    "dev:server": "npm run dev --workspace=server",
+    "dev:web": "npm run dev --workspace=web",
+    "migrate": "npm run migrate --workspace=server",
+    "test": "npm test --workspace=server"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

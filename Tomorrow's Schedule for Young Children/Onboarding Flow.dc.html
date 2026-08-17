@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@48,400,1,0&display=swap" rel="stylesheet">
+<script src="./image-slot.js"></script>
+<style>
+body{margin:0;background:#efe9df;font-family:Nunito,system-ui,sans-serif}
+a{color:#6b58a6}a:hover{color:#4e3f80}
+.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(0,0,0,.08);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}
+.dv-tid{font:700 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#2f2823;color:#fff;border-radius:4px;text-decoration:none}
+.dv-tname{font:700 13px/1.2 Nunito,system-ui,sans-serif;color:#2f2823}
+.dv-opts{display:flex;flex-wrap:wrap;gap:26px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+.dv-oid{font:700 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#2f2823;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11.5px/1.3 Nunito,system-ui,sans-serif;color:rgba(0,0,0,.55)}
+.dv-opt:target .dv-oid{background:#6b58a6;color:#fff}
+.dv-next{margin:22px 0 0;font:12.5px/1.6 Nunito,system-ui,sans-serif;color:rgba(0,0,0,.55)}
+.ms{font-family:'Material Symbols Rounded';font-weight:400;font-style:normal;line-height:1;letter-spacing:normal;text-transform:none;white-space:nowrap;direction:ltr;font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 48}
+.note{font:400 11px/1.5 ui-monospace,Menlo,monospace;color:rgba(0,0,0,.42);max-width:290px}
+.emo{font-family:'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif}
+@keyframes waitDot{0%,100%{opacity:.35}50%{opacity:1}}
+@keyframes pulseRing{0%{opacity:.9;transform:scale(.85)}70%{opacity:0;transform:scale(1.5)}100%{opacity:0;transform:scale(1.5)}}
+</style>
+</helmet>
+
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Parent onboarding — 6 steps, one decision per screen</span></div>
+
+<div style="display:flex;gap:34px;align-items:flex-start;margin:0 0 26px;flex-wrap:wrap">
+<div class="note">SEQUENCE<br>Calendar connects before profiles, so step 3 can show real names pulled from the account instead of an empty form.</div>
+<div class="note">TONE<br>Same palette, type and spacing as the kid board: cream #faf5ec, purple #b3a3d9, apricot #e6ab84, sage #a3bf9a, plum #3f3550, Nunito.</div>
+<div class="note">TOUCH<br>Every primary action is a 64px pill. One button per screen; secondary actions are quiet text.</div>
+<div class="note">PROGRESS<br>Six dots, filled to the current step. No back-stack chrome — a small skip/back arrow only where returning is meaningful.</div>
+</div>
+
+<div class="dv-opts">
+
+<!-- ===== 1 · sign in ===== -->
+<div class="dv-opt" id="1a">
+<div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>Step 1 — Sign in</div>
+<div style="width:390px;height:812px;box-sizing:border-box;background:#faf5ec;border-radius:34px;border:1px solid rgba(0,0,0,.08);box-shadow:0 2px 8px rgba(0,0,0,.07);padding:56px 28px 40px;display:flex;flex-direction:column">
+<div style="display:flex;gap:8px;justify-content:center">
+<div style="width:26px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+</div>
+
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;margin-top:-40px">
+<div style="display:flex;align-items:center">
+<div style="width:58px;height:58px;border-radius:20px;background:#b3a3d9;display:flex;align-items:center;justify-content:center;transform:rotate(-8deg)"><span class="ms" style="font-size:34px;color:#fff">wb_sunny</span></div>
+<div style="width:66px;height:66px;border-radius:22px;background:#e6ab84;display:flex;align-items:center;justify-content:center;margin:0 -8px;z-index:1"><span class="ms" style="font-size:40px;color:#fff">calendar_today</span></div>
+<div style="width:58px;height:58px;border-radius:20px;background:#3f3550;display:flex;align-items:center;justify-content:center;transform:rotate(8deg)"><span class="ms" style="font-size:34px;color:#e8d9a8">bedtime</span></div>
+</div>
+<div style="font:800 38px/1.15 Nunito,sans-serif;color:#3a3128;text-align:center;letter-spacing:-.5px">Tomorrow,<br>on the fridge</div>
+<div style="font:600 19px/1.5 Nunito,sans-serif;color:rgba(58,49,40,.5);text-align:center;max-width:280px;text-wrap:pretty">A calm daily view your kids can read before they can read.</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:18px;align-items:center">
+<div style="width:100%;height:64px;border-radius:32px;background:#fff;border:1.5px solid rgba(58,49,40,.14);box-shadow:0 2px 6px rgba(58,49,40,.07);display:flex;align-items:center;justify-content:center;gap:12px">
+<svg width="24" height="24" viewBox="0 0 48 48"><path fill="#4285F4" d="M45.1 24.5c0-1.6-.1-2.8-.4-4H24v7.3h12.1c-.2 2-1.6 5-4.5 7l-.1.4 6.5 5 .5.1c4.2-3.8 6.6-9.5 6.6-15.8"/><path fill="#34A853" d="M24 46c5.9 0 10.9-1.9 14.5-5.3l-6.9-5.3c-1.8 1.3-4.3 2.2-7.6 2.2-5.8 0-10.7-3.8-12.5-9.1l-.4.1-6.7 5.2-.1.4C7.9 41 15.3 46 24 46"/><path fill="#FBBC05" d="M11.5 28.5c-.5-1.4-.7-2.9-.7-4.5s.3-3.1.7-4.5v-.5l-6.8-5.3-.2.1C2.9 16.9 2 20.3 2 24s.9 7.1 2.5 10.2z"/><path fill="#EB4335" d="M24 10.4c4.1 0 6.9 1.8 8.5 3.3l6.2-6C34.9 4.1 29.9 2 24 2 15.3 2 7.9 7 4.5 13.8l6.9 5.3c1.9-5.3 6.8-8.7 12.6-8.7"/></svg>
+<span style="font:800 20px/1 Nunito,sans-serif;color:#3a3128">Continue with Google</span>
+</div>
+<div style="font:600 13.5px/1.5 Nunito,sans-serif;color:rgba(58,49,40,.38);text-align:center;max-width:290px">We only read your calendar. Nothing is ever posted or shared.</div>
+</div>
+</div>
+</div>
+
+<!-- ===== 2 · calendar ===== -->
+<div class="dv-opt" id="1b">
+<div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>Step 2 — Connect Google Calendar</div>
+<div style="width:390px;height:812px;box-sizing:border-box;background:#faf5ec;border-radius:34px;border:1px solid rgba(0,0,0,.08);box-shadow:0 2px 8px rgba(0,0,0,.07);padding:56px 28px 40px;display:flex;flex-direction:column">
+<div style="display:flex;gap:8px;justify-content:center">
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:26px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+</div>
+
+<div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:28px;margin-top:-30px">
+<div style="align-self:center;width:132px;height:132px;border-radius:40px;background:#e9eefb;display:flex;align-items:center;justify-content:center">
+<span class="ms" style="font-size:82px;color:#4a7fae">event_available</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="font:800 32px/1.2 Nunito,sans-serif;color:#3a3128;text-align:center;letter-spacing:-.4px">Bring your calendar in</div>
+<div style="font:600 18px/1.55 Nunito,sans-serif;color:rgba(58,49,40,.52);text-align:center;text-wrap:pretty">Events sync automatically, so tomorrow's board is always right without anyone typing it in.</div>
+</div>
+<div style="background:#fff;border-radius:22px;padding:16px 18px;display:flex;align-items:center;gap:14px;box-shadow:0 2px 6px rgba(58,49,40,.06)">
+<div style="width:44px;height:44px;border-radius:50%;background:#efe9df;display:flex;align-items:center;justify-content:center;flex:none"><span class="ms" style="font-size:26px;color:#7d6f5f">account_circle</span></div>
+<div style="flex:1;min-width:0">
+<div style="font:800 16px/1.2 Nunito,sans-serif;color:#3a3128">Dana Levi</div>
+<div style="font:600 14px/1.3 Nunito,sans-serif;color:rgba(58,49,40,.45);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">dana.levi@gmail.com</div>
+</div>
+<span class="ms" style="font-size:26px;color:#7aa96f">check_circle</span>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:16px;align-items:center">
+<div style="width:100%;height:64px;border-radius:32px;background:#b3a3d9;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(107,88,166,.28)">
+<span style="font:800 20px/1 Nunito,sans-serif;color:#fff">Connect calendar</span>
+</div>
+<div style="font:700 15px/1 Nunito,sans-serif;color:rgba(58,49,40,.42)">Use a different account</div>
+</div>
+</div>
+</div>
+
+<!-- ===== 3 · family ===== -->
+<div class="dv-opt" id="1c">
+<div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>Step 3 — Add family members</div>
+<div style="width:390px;height:812px;box-sizing:border-box;background:#faf5ec;border-radius:34px;border:1px solid rgba(0,0,0,.08);box-shadow:0 2px 8px rgba(0,0,0,.07);padding:56px 24px 40px;display:flex;flex-direction:column">
+<div style="display:flex;gap:8px;justify-content:center">
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:26px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+</div>
+
+<div style="padding:26px 4px 18px">
+<div style="font:800 30px/1.2 Nunito,sans-serif;color:#3a3128;letter-spacing:-.4px">Who's in the family?</div>
+<div style="font:600 17px/1.45 Nunito,sans-serif;color:rgba(58,49,40,.48);margin-top:6px">A color and a face for each person — that's how kids tell the cards apart.</div>
+</div>
+
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;overflow-y:auto">
+
+<div style="display:flex;align-items:center;gap:14px;padding:2px 6px 4px">
+<div style="display:flex;align-items:center;gap:10px">
+<div style="display:flex;flex-direction:column;align-items:center;gap:5px">
+<div style="width:52px;height:52px;border-radius:50%;background:#b3a3d9;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:28px">🦄</span></div>
+<div style="font:700 13px/1 Nunito,sans-serif;color:rgba(58,49,40,.5)">Mia</div>
+</div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:5px">
+<div style="width:52px;height:52px;border-radius:50%;background:#e6ab84;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:28px">🚀</span></div>
+<div style="font:700 13px/1 Nunito,sans-serif;color:rgba(58,49,40,.5)">Theo</div>
+</div>
+</div>
+<div style="font:600 14px/1.4 Nunito,sans-serif;color:rgba(58,49,40,.38);flex:1">Tap a face to change<br>a color or icon</div>
+</div>
+
+<div style="background:#fff;border-radius:24px;padding:18px 16px 20px;box-shadow:0 3px 12px rgba(58,49,40,.1);border:2px solid #a3bf9a">
+<div style="display:flex;align-items:center;gap:12px">
+<div style="width:52px;height:52px;border-radius:50%;padding:3px;box-sizing:border-box;background:#a3bf9a;flex:none">
+<image-slot id="ob-avatar-dad" shape="circle" style="width:100%;height:100%" placeholder="Photo"></image-slot>
+</div>
+<div style="flex:1;border-bottom:2px solid rgba(58,49,40,.12);padding-bottom:6px">
+<div style="font:800 19px/1.2 Nunito,sans-serif;color:#3a3128">Dad<span style="color:#a3bf9a">|</span></div>
+</div>
+</div>
+<div style="display:flex;gap:8px;margin-top:14px">
+<div style="flex:1;height:38px;border-radius:19px;background:#f4efe6;display:flex;align-items:center;justify-content:center;gap:6px"><span class="ms" style="font-size:17px;color:#5c5145">add_a_photo</span><span style="font:800 13.5px/1 Nunito,sans-serif;color:#5c5145">Add photo</span></div>
+<div style="flex:1;height:38px;border-radius:19px;background:#a3bf9a;display:flex;align-items:center;justify-content:center;gap:6px"><span class="ms" style="font-size:17px;color:#fff">emoji_emotions</span><span style="font:800 13.5px/1 Nunito,sans-serif;color:#fff">Use icon</span></div>
+</div>
+<div style="font:700 12.5px/1 Nunito,sans-serif;color:rgba(58,49,40,.4);letter-spacing:.06em;margin:18px 0 10px">COLOR</div>
+<div style="display:flex;gap:10px">
+<div style="width:40px;height:40px;border-radius:50%;background:#b3a3d9;opacity:.35"></div>
+<div style="width:40px;height:40px;border-radius:50%;background:#e6ab84;opacity:.35"></div>
+<div style="width:40px;height:40px;border-radius:50%;background:#a3bf9a;box-shadow:0 0 0 3px #faf5ec,0 0 0 6px #a3bf9a"></div>
+<div style="width:40px;height:40px;border-radius:50%;background:#e2b6c4"></div>
+<div style="width:40px;height:40px;border-radius:50%;background:#8fc4c0"></div>
+<div style="width:40px;height:40px;border-radius:50%;background:#f0cf8e"></div>
+</div>
+<div style="font:700 12.5px/1 Nunito,sans-serif;color:rgba(58,49,40,.4);letter-spacing:.06em;margin:18px 0 10px">ICON</div>
+<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:7px">
+<div style="height:44px;border-radius:14px;background:#f4efe6;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:24px">🦄</span></div>
+<div style="height:44px;border-radius:14px;background:#f4efe6;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:24px">🚀</span></div>
+<div style="height:44px;border-radius:14px;background:#a3bf9a;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:24px">⚽</span></div>
+<div style="height:44px;border-radius:14px;background:#f4efe6;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:24px">🐢</span></div>
+<div style="height:44px;border-radius:14px;background:#f4efe6;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:24px">🌸</span></div>
+<div style="height:44px;border-radius:14px;background:#f4efe6;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:24px">🐳</span></div>
+<div style="height:44px;border-radius:14px;background:#f4efe6;display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:22px;color:rgba(58,49,40,.35)">more_horiz</span></div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;gap:12px;padding:4px 6px">
+<div style="width:52px;height:52px;border-radius:50%;border:2.5px dashed rgba(58,49,40,.2);display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:26px;color:rgba(58,49,40,.3)">add</span></div>
+<div style="font:800 18px/1 Nunito,sans-serif;color:rgba(58,49,40,.42)">Add someone else</div>
+</div>
+
+</div>
+
+<div style="width:100%;height:64px;border-radius:32px;background:#b3a3d9;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(107,88,166,.28);margin-top:14px">
+<span style="font:800 20px/1 Nunito,sans-serif;color:#fff">Done — 3 people</span>
+</div>
+</div>
+</div>
+
+<!-- ===== 4 · timezone ===== -->
+<div class="dv-opt" id="1d">
+<div class="dv-olabel"><a class="dv-oid" href="#1d">1d</a>Step 4 — Confirm timezone</div>
+<div style="width:390px;height:812px;box-sizing:border-box;background:#faf5ec;border-radius:34px;border:1px solid rgba(0,0,0,.08);box-shadow:0 2px 8px rgba(0,0,0,.07);padding:56px 28px 40px;display:flex;flex-direction:column">
+<div style="display:flex;gap:8px;justify-content:center">
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:26px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+</div>
+
+<div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:26px;margin-top:-30px">
+<div style="align-self:center;width:120px;height:120px;border-radius:50%;background:#f7ecd6;display:flex;align-items:center;justify-content:center">
+<span class="ms" style="font-size:72px;color:#c98a2c">schedule</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:800 32px/1.2 Nunito,sans-serif;color:#3a3128;text-align:center;letter-spacing:-.4px">Is this your time?</div>
+<div style="font:600 18px/1.5 Nunito,sans-serif;color:rgba(58,49,40,.52);text-align:center">So "tomorrow" starts when your day does.</div>
+</div>
+
+<div style="background:#fff;border-radius:24px;padding:22px;box-shadow:0 2px 8px rgba(58,49,40,.07);display:flex;flex-direction:column;align-items:center;gap:6px">
+<div style="font:800 26px/1.2 Nunito,sans-serif;color:#3a3128">Asia / Jerusalem</div>
+<div style="font:600 17px/1.3 Nunito,sans-serif;color:rgba(58,49,40,.45)">GMT+3 · 4:12 pm right now</div>
+<div style="display:flex;align-items:center;gap:6px;margin-top:8px;background:#eef4ec;border-radius:20px;padding:6px 12px">
+<span class="ms" style="font-size:18px;color:#7aa96f">my_location</span>
+<span style="font:700 13.5px/1 Nunito,sans-serif;color:#5f7f56">Detected from your device</span>
+</div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:16px;align-items:center">
+<div style="width:100%;height:64px;border-radius:32px;background:#b3a3d9;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(107,88,166,.28)">
+<span style="font:800 20px/1 Nunito,sans-serif;color:#fff">Yes, that's right</span>
+</div>
+<div style="font:700 15px/1 Nunito,sans-serif;color:rgba(58,49,40,.42)">Choose a different timezone</div>
+</div>
+</div>
+</div>
+
+<!-- ===== 6 · preview ===== -->
+<div class="dv-opt" id="1f">
+<div class="dv-olabel"><a class="dv-oid" href="#1f">1f</a>Step 5 — Preview the board</div>
+<div style="width:390px;height:812px;box-sizing:border-box;background:#faf5ec;border-radius:34px;border:1px solid rgba(0,0,0,.08);box-shadow:0 2px 8px rgba(0,0,0,.07);padding:56px 24px 40px;display:flex;flex-direction:column">
+<div style="display:flex;gap:8px;justify-content:center">
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:26px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+</div>
+
+<div style="padding:24px 4px 16px;text-align:center">
+<div style="font:800 30px/1.2 Nunito,sans-serif;color:#3a3128;letter-spacing:-.4px">Here's tomorrow</div>
+<div style="font:600 17px/1.45 Nunito,sans-serif;color:rgba(58,49,40,.48);margin-top:6px">This is what the kids will see.</div>
+</div>
+
+<div style="flex:1;background:#efe9df;border-radius:26px;padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:inset 0 2px 6px rgba(58,49,40,.06)">
+<div style="display:flex;align-items:center;gap:9px;padding:2px 4px 4px">
+<span class="ms" style="font-size:26px;color:#e8a33d">wb_twilight</span>
+<div style="font:800 20px/1 Nunito,sans-serif;color:#3a3128">Tomorrow</div>
+<div style="font:600 14px/1 Nunito,sans-serif;color:rgba(58,49,40,.42);padding-top:2px">Wednesday</div>
+<div style="flex:1"></div>
+<div style="display:flex;gap:5px">
+<div style="width:26px;height:26px;border-radius:50%;background:#b3a3d9;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:14px">🦄</span></div>
+<div style="width:26px;height:26px;border-radius:50%;background:#e6ab84;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:14px">🚀</span></div>
+<div style="width:26px;height:26px;border-radius:50%;background:#a3bf9a;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:14px">⚽</span></div>
+</div>
+</div>
+
+<div style="flex:1;display:flex;flex-direction:column;gap:9px">
+<div style="flex:1;background:#f3d9a0;border-radius:18px;display:flex;align-items:center;padding:0 18px;gap:16px">
+<span class="ms" style="font-size:44px;color:#c98a2c">wb_sunny</span>
+<div style="flex:1"></div>
+<div style="text-align:right"><div style="font:800 18px/1.15 Nunito,sans-serif;color:#8a6420">Wake up</div><div style="font:700 13px/1.3 Nunito,sans-serif;color:rgba(138,100,32,.7)">7:00 am</div></div>
+</div>
+<div style="flex:1;background:#b3a3d9;border-radius:18px;display:flex;align-items:center;padding:0 18px;gap:16px">
+<span class="emo" style="font-size:40px">🎒</span>
+<div style="flex:1"></div>
+<div style="text-align:right"><div style="font:800 18px/1.15 Nunito,sans-serif;color:#fff">School</div><div style="font:700 13px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.78)">8:00 am</div></div>
+</div>
+<div style="flex:1;background:#a3bf9a;border-radius:18px;display:flex;align-items:center;padding:0 18px;gap:16px">
+<span class="emo" style="font-size:40px">🩺</span>
+<div style="flex:1"></div>
+<div style="text-align:right"><div style="font:800 18px/1.15 Nunito,sans-serif;color:#fff">Doctor</div><div style="font:700 13px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.78)">3:30 pm</div></div>
+</div>
+<div style="flex:1;background:#b3a3d9;border-radius:18px;display:flex;align-items:center;padding:0 18px;gap:16px">
+<span class="emo" style="font-size:40px">💃</span>
+<div style="flex:1"></div>
+<div style="text-align:right"><div style="font:800 18px/1.15 Nunito,sans-serif;color:#fff">Dance</div><div style="font:700 13px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.78)">4:00 pm</div></div>
+</div>
+<div style="flex:1;background:#e6ab84;border-radius:18px;display:flex;align-items:center;padding:0 18px;gap:16px">
+<span class="emo" style="font-size:40px">⚽</span>
+<div style="flex:1"></div>
+<div style="text-align:right"><div style="font:800 18px/1.15 Nunito,sans-serif;color:#fff">Playdate</div><div style="font:700 13px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.78)">5:30 pm</div></div>
+</div>
+<div style="flex:1;background:#3f3550;border-radius:18px;display:flex;align-items:center;padding:0 18px;gap:16px">
+<span class="ms" style="font-size:40px;color:#e8d9a8">bedtime</span>
+<div style="flex:1"></div>
+<div style="text-align:right"><div style="font:800 18px/1.15 Nunito,sans-serif;color:#fff">Bedtime</div><div style="font:700 13px/1.3 Nunito,sans-serif;color:rgba(255,255,255,.78)">7:30 pm</div></div>
+</div>
+</div>
+</div>
+
+<div style="width:100%;height:64px;border-radius:32px;background:#b3a3d9;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(107,88,166,.28);margin-top:16px">
+<span style="font:800 20px/1 Nunito,sans-serif;color:#fff">Continue</span>
+</div>
+</div>
+<!-- ===== 5 · whatsapp ===== -->
+<div class="dv-opt" id="1e">
+<div class="dv-olabel"><a class="dv-oid" href="#1e">1e</a>Step 6 — Connect WhatsApp (pending)</div>
+<div style="width:390px;height:812px;box-sizing:border-box;background:#faf5ec;border-radius:34px;border:1px solid rgba(0,0,0,.08);box-shadow:0 2px 8px rgba(0,0,0,.07);padding:56px 28px 40px;display:flex;flex-direction:column">
+<div style="display:flex;gap:8px;justify-content:center">
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:26px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+</div>
+
+<div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:30px;margin-top:-20px">
+<div style="align-self:center;width:96px;height:96px;border-radius:50%;background:#e7f7ed;display:flex;align-items:center;justify-content:center">
+<span class="ms" style="font-size:56px;color:#25963f">chat</span>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:800 32px/1.2 Nunito,sans-serif;color:#3a3128;text-align:center;letter-spacing:-.4px">Add events by message</div>
+<div style="font:600 18px/1.5 Nunito,sans-serif;color:rgba(58,49,40,.52);text-align:center;text-wrap:pretty">Text us "dentist Tuesday 4pm" and it lands on the board.</div>
+</div>
+
+<div style="display:flex;flex-direction:column;align-items:center;gap:14px">
+<div style="font:800 30px/1.2 Nunito,sans-serif;color:#3a3128;letter-spacing:.5px">+1 (415) 555-0148</div>
+<div style="height:44px;padding:0 20px;border-radius:22px;background:#f4efe6;display:flex;align-items:center;gap:8px">
+<span class="ms" style="font-size:20px;color:#7d6f5f">content_copy</span>
+<span style="font:800 15px/1 Nunito,sans-serif;color:#5c5145">Copy number</span>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:center;gap:10px">
+<div style="display:flex;gap:5px">
+<div style="width:8px;height:8px;border-radius:50%;background:#c9a24a;animation:waitDot 1.4s ease-in-out infinite"></div>
+<div style="width:8px;height:8px;border-radius:50%;background:#c9a24a;animation:waitDot 1.4s ease-in-out .2s infinite"></div>
+<div style="width:8px;height:8px;border-radius:50%;background:#c9a24a;animation:waitDot 1.4s ease-in-out .4s infinite"></div>
+</div>
+<div style="font:700 15px/1.3 Nunito,sans-serif;color:rgba(58,49,40,.45)">Waiting for your first message</div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:16px;align-items:center">
+<div style="width:100%;height:64px;border-radius:32px;background:#25963f;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(37,150,63,.26)">
+<span style="font:800 20px/1 Nunito,sans-serif;color:#fff">Open WhatsApp</span>
+</div>
+<div style="font:700 15px/1 Nunito,sans-serif;color:rgba(58,49,40,.42)">Skip and finish setup</div>
+</div>
+</div>
+</div>
+
+</div>
+
+</div>
+
+<div class="dv-opt" id="1g">
+<div class="dv-olabel"><a class="dv-oid" href="#1g">1g</a>New step — Set a parent PIN (appended after WhatsApp, before Preview)</div>
+<div style="width:390px;height:812px;box-sizing:border-box;background:#faf5ec;border-radius:34px;border:1px solid rgba(0,0,0,.08);box-shadow:0 2px 8px rgba(0,0,0,.07);padding:56px 28px 40px;display:flex;flex-direction:column;align-items:center;overflow:hidden">
+<div style="display:flex;gap:8px;justify-content:center;margin-bottom:8px">
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:26px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+</div>
+
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;margin-top:-10px">
+<div style="width:96px;height:96px;border-radius:50%;background:#efe6f4;display:flex;align-items:center;justify-content:center">
+<span class="ms" style="font-size:52px;color:#6b58a6">lock</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:800 30px/1.2 Nunito,sans-serif;color:#3a3128;text-align:center;letter-spacing:-.4px">Set a parent PIN</div>
+<div style="font:600 17px/1.5 Nunito,sans-serif;color:rgba(58,49,40,.52);text-align:center;text-wrap:pretty">So the kids can look, but only a parent can change things.</div>
+</div>
+<div style="display:flex;gap:18px">
+<div style="width:18px;height:18px;border-radius:50%;background:#6b58a6"></div>
+<div style="width:18px;height:18px;border-radius:50%;background:#6b58a6"></div>
+<div style="width:18px;height:18px;border-radius:50%;background:rgba(58,49,40,.15)"></div>
+<div style="width:18px;height:18px;border-radius:50%;background:rgba(58,49,40,.15)"></div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,64px);gap:16px;justify-content:center">
+<div style="width:64px;height:64px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font:800 24px/1 Nunito,sans-serif;color:#3a3128;box-shadow:0 2px 6px rgba(58,49,40,.07)">1</div>
+<div style="width:64px;height:64px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font:800 24px/1 Nunito,sans-serif;color:#3a3128;box-shadow:0 2px 6px rgba(58,49,40,.07)">2</div>
+<div style="width:64px;height:64px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font:800 24px/1 Nunito,sans-serif;color:#3a3128;box-shadow:0 2px 6px rgba(58,49,40,.07)">3</div>
+<div style="width:64px;height:64px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font:800 24px/1 Nunito,sans-serif;color:#3a3128;box-shadow:0 2px 6px rgba(58,49,40,.07)">4</div>
+<div style="width:64px;height:64px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font:800 24px/1 Nunito,sans-serif;color:#3a3128;box-shadow:0 2px 6px rgba(58,49,40,.07)">5</div>
+<div style="width:64px;height:64px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font:800 24px/1 Nunito,sans-serif;color:#3a3128;box-shadow:0 2px 6px rgba(58,49,40,.07)">6</div>
+<div style="width:64px;height:64px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font:800 24px/1 Nunito,sans-serif;color:#3a3128;box-shadow:0 2px 6px rgba(58,49,40,.07)">7</div>
+<div style="width:64px;height:64px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font:800 24px/1 Nunito,sans-serif;color:#3a3128;box-shadow:0 2px 6px rgba(58,49,40,.07)">8</div>
+<div style="width:64px;height:64px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font:800 24px/1 Nunito,sans-serif;color:#3a3128;box-shadow:0 2px 6px rgba(58,49,40,.07)">9</div>
+<div style="width:64px;height:64px"></div>
+<div style="width:64px;height:64px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font:800 24px/1 Nunito,sans-serif;color:#3a3128;box-shadow:0 2px 6px rgba(58,49,40,.07)">0</div>
+<div style="width:64px;height:64px;display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:26px;color:rgba(58,49,40,.4)">backspace</span></div>
+</div>
+</div>
+
+<div style="font:700 15px/1 Nunito,sans-serif;color:rgba(58,49,40,.42)">Skip — I'll set this up later</div>
+</div>
+</div>
+
+</div>
+
+<p class="dv-next">Try next: "step 3 as one person per screen instead of a list" · "swap the emoji avatars for photo uploads" · "tighter — can we drop to 5 steps?"</p>
+</section>
+
+<section class="dv-turn" id="t2">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">Desktop web version — same 6 steps, centered card layout</span></div>
+
+<div style="display:flex;gap:34px;align-items:flex-start;margin:0 0 26px;flex-wrap:wrap">
+<div class="note">APPROACH<br>Same content and order as <a href="#1a">1a</a>–<a href="#1f">1f</a>. The phone's full-bleed screen becomes a centered card (480px) on a cream page — no side rails or extra desktop chrome, since the wizard is a single focused task, not a dashboard.</div>
+<div class="note">STEP 3 DIFFERENCE<br>Desktop has room to show all people already added plus the active editor in one view without scrolling — the only step whose layout actually changes.</div>
+</div>
+
+<div class="dv-opts">
+
+<div class="dv-opt" id="2a">
+<div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a>Step 1 — Sign in</div>
+<div class="dv-card" style="width:1120px;border-radius:16px">
+<div style="background:#efe9df;padding:64px 0;display:flex;flex-direction:column;align-items:center;min-height:640px">
+<div style="display:flex;gap:8px;justify-content:center;margin-bottom:56px">
+<div style="width:26px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+</div>
+<div style="width:480px;background:#faf5ec;border-radius:28px;box-shadow:0 8px 28px rgba(58,49,40,.12);padding:52px 44px;display:flex;flex-direction:column;align-items:center;gap:26px">
+<div style="display:flex;align-items:center">
+<div style="width:58px;height:58px;border-radius:20px;background:#b3a3d9;display:flex;align-items:center;justify-content:center;transform:rotate(-8deg)"><span class="ms" style="font-size:34px;color:#fff">wb_sunny</span></div>
+<div style="width:66px;height:66px;border-radius:22px;background:#e6ab84;display:flex;align-items:center;justify-content:center;margin:0 -8px;z-index:1"><span class="ms" style="font-size:40px;color:#fff">calendar_today</span></div>
+<div style="width:58px;height:58px;border-radius:20px;background:#3f3550;display:flex;align-items:center;justify-content:center;transform:rotate(8deg)"><span class="ms" style="font-size:34px;color:#e8d9a8">bedtime</span></div>
+</div>
+<div style="font:800 34px/1.15 Nunito,sans-serif;color:#3a3128;text-align:center;letter-spacing:-.5px">Tomorrow, on the fridge</div>
+<div style="font:600 18px/1.5 Nunito,sans-serif;color:rgba(58,49,40,.5);text-align:center;max-width:340px">A calm daily view your kids can read before they can read.</div>
+<div style="width:100%;height:60px;border-radius:30px;background:#fff;border:1.5px solid rgba(58,49,40,.14);box-shadow:0 2px 6px rgba(58,49,40,.07);display:flex;align-items:center;justify-content:center;gap:12px;margin-top:10px">
+<svg width="22" height="22" viewBox="0 0 48 48"><path fill="#4285F4" d="M45.1 24.5c0-1.6-.1-2.8-.4-4H24v7.3h12.1c-.2 2-1.6 5-4.5 7l-.1.4 6.5 5 .5.1c4.2-3.8 6.6-9.5 6.6-15.8"/><path fill="#34A853" d="M24 46c5.9 0 10.9-1.9 14.5-5.3l-6.9-5.3c-1.8 1.3-4.3 2.2-7.6 2.2-5.8 0-10.7-3.8-12.5-9.1l-.4.1-6.7 5.2-.1.4C7.9 41 15.3 46 24 46"/><path fill="#FBBC05" d="M11.5 28.5c-.5-1.4-.7-2.9-.7-4.5s.3-3.1.7-4.5v-.5l-6.8-5.3-.2.1C2.9 16.9 2 20.3 2 24s.9 7.1 2.5 10.2z"/><path fill="#EB4335" d="M24 10.4c4.1 0 6.9 1.8 8.5 3.3l6.2-6C34.9 4.1 29.9 2 24 2 15.3 2 7.9 7 4.5 13.8l6.9 5.3c1.9-5.3 6.8-8.7 12.6-8.7"/></svg>
+<span style="font:800 19px/1 Nunito,sans-serif;color:#3a3128">Continue with Google</span>
+</div>
+<div style="font:600 13px/1.5 Nunito,sans-serif;color:rgba(58,49,40,.38);text-align:center">We only read your calendar. Nothing is ever posted or shared.</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="2b">
+<div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a>Step 2 — Connect Google Calendar</div>
+<div class="dv-card" style="width:1120px;border-radius:16px">
+<div style="background:#efe9df;padding:64px 0;display:flex;flex-direction:column;align-items:center;min-height:640px">
+<div style="display:flex;gap:8px;justify-content:center;margin-bottom:56px">
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:26px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+</div>
+<div style="width:480px;background:#faf5ec;border-radius:28px;box-shadow:0 8px 28px rgba(58,49,40,.12);padding:52px 44px;display:flex;flex-direction:column;gap:26px">
+<div style="align-self:center;width:120px;height:120px;border-radius:36px;background:#e9eefb;display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:74px;color:#4a7fae">event_available</span></div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:800 30px/1.2 Nunito,sans-serif;color:#3a3128;text-align:center;letter-spacing:-.4px">Bring your calendar in</div>
+<div style="font:600 17px/1.5 Nunito,sans-serif;color:rgba(58,49,40,.52);text-align:center">Events sync automatically, so tomorrow's board is always right without anyone typing it in.</div>
+</div>
+<div style="background:#fff;border-radius:20px;padding:14px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 6px rgba(58,49,40,.06)">
+<div style="width:42px;height:42px;border-radius:50%;background:#efe9df;display:flex;align-items:center;justify-content:center;flex:none"><span class="ms" style="font-size:24px;color:#7d6f5f">account_circle</span></div>
+<div style="flex:1;min-width:0"><div style="font:800 15px/1.2 Nunito,sans-serif;color:#3a3128">Dana Levi</div><div style="font:600 13px/1.3 Nunito,sans-serif;color:rgba(58,49,40,.45)">dana.levi@gmail.com</div></div>
+<span class="ms" style="font-size:24px;color:#7aa96f">check_circle</span>
+</div>
+<div style="width:100%;height:58px;border-radius:29px;background:#b3a3d9;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(107,88,166,.28)"><span style="font:800 19px/1 Nunito,sans-serif;color:#fff">Connect calendar</span></div>
+<div style="font:700 14px/1 Nunito,sans-serif;color:rgba(58,49,40,.42);text-align:center">Use a different account</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="2c">
+<div class="dv-olabel"><a class="dv-oid" href="#2c">2c</a>Step 3 — Add family members (wider: list + editor side by side)</div>
+<div class="dv-card" style="width:1120px;border-radius:16px">
+<div style="background:#efe9df;padding:64px 0;display:flex;flex-direction:column;align-items:center;min-height:640px">
+<div style="display:flex;gap:8px;justify-content:center;margin-bottom:40px">
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:26px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+</div>
+<div style="width:820px">
+<div style="text-align:center;margin-bottom:28px">
+<div style="font:800 32px/1.2 Nunito,sans-serif;color:#3a3128;letter-spacing:-.4px">Who's in the family?</div>
+<div style="font:600 17px/1.45 Nunito,sans-serif;color:rgba(58,49,40,.48);margin-top:6px">A color and a face for each person — that's how kids tell the cards apart.</div>
+</div>
+<div style="display:flex;gap:24px;align-items:flex-start">
+<div style="width:260px;display:flex;flex-direction:column;gap:12px">
+<div style="background:#fff;border-radius:20px;padding:14px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 6px rgba(58,49,40,.06)">
+<div style="width:48px;height:48px;border-radius:50%;background:#b3a3d9;display:flex;align-items:center;justify-content:center;flex:none"><span class="emo" style="font-size:26px">🦄</span></div>
+<div style="flex:1"><div style="font:800 18px/1.2 Nunito,sans-serif;color:#3a3128">Mia</div><div style="font:600 13px/1.3 Nunito,sans-serif;color:rgba(58,49,40,.42)">Kid</div></div>
+</div>
+<div style="background:#fff;border-radius:20px;padding:14px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 6px rgba(58,49,40,.06)">
+<div style="width:48px;height:48px;border-radius:50%;background:#e6ab84;display:flex;align-items:center;justify-content:center;flex:none"><span class="emo" style="font-size:26px">🚀</span></div>
+<div style="flex:1"><div style="font:800 18px/1.2 Nunito,sans-serif;color:#3a3128">Theo</div><div style="font:600 13px/1.3 Nunito,sans-serif;color:rgba(58,49,40,.42)">Kid</div></div>
+</div>
+<div style="display:flex;align-items:center;gap:12px;padding:6px 8px">
+<div style="width:48px;height:48px;border-radius:50%;border:2.5px dashed rgba(58,49,40,.2);display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:24px;color:rgba(58,49,40,.3)">add</span></div>
+<div style="font:800 16px/1 Nunito,sans-serif;color:rgba(58,49,40,.42)">Add someone else</div>
+</div>
+</div>
+<div style="flex:1;background:#fff;border-radius:24px;padding:24px 26px 26px;box-shadow:0 3px 12px rgba(58,49,40,.1);border:2px solid #a3bf9a">
+<div style="display:flex;align-items:center;gap:14px">
+<div style="width:56px;height:56px;border-radius:50%;padding:3px;box-sizing:border-box;background:#a3bf9a;flex:none">
+<image-slot id="ob-avatar-dad-2c" shape="circle" style="width:100%;height:100%" placeholder="Photo"></image-slot>
+</div>
+<div style="flex:1;border-bottom:2px solid rgba(58,49,40,.12);padding-bottom:8px">
+<div style="font:800 21px/1.2 Nunito,sans-serif;color:#3a3128">Dad<span style="color:#a3bf9a">|</span></div>
+</div>
+</div>
+<div style="display:flex;gap:10px;margin-top:16px">
+<div style="flex:1;height:40px;border-radius:20px;background:#f4efe6;display:flex;align-items:center;justify-content:center;gap:6px"><span class="ms" style="font-size:18px;color:#5c5145">add_a_photo</span><span style="font:800 14px/1 Nunito,sans-serif;color:#5c5145">Add photo</span></div>
+<div style="flex:1;height:40px;border-radius:20px;background:#a3bf9a;display:flex;align-items:center;justify-content:center;gap:6px"><span class="ms" style="font-size:18px;color:#fff">emoji_emotions</span><span style="font:800 14px/1 Nunito,sans-serif;color:#fff">Use icon</span></div>
+</div>
+<div style="font:700 12.5px/1 Nunito,sans-serif;color:rgba(58,49,40,.4);letter-spacing:.06em;margin:20px 0 10px">COLOR</div>
+<div style="display:flex;gap:10px">
+<div style="width:38px;height:38px;border-radius:50%;background:#b3a3d9;opacity:.35"></div>
+<div style="width:38px;height:38px;border-radius:50%;background:#e6ab84;opacity:.35"></div>
+<div style="width:38px;height:38px;border-radius:50%;background:#a3bf9a;box-shadow:0 0 0 3px #fff,0 0 0 6px #a3bf9a"></div>
+<div style="width:38px;height:38px;border-radius:50%;background:#e2b6c4"></div>
+<div style="width:38px;height:38px;border-radius:50%;background:#8fc4c0"></div>
+<div style="width:38px;height:38px;border-radius:50%;background:#f0cf8e"></div>
+</div>
+<div style="font:700 12.5px/1 Nunito,sans-serif;color:rgba(58,49,40,.4);letter-spacing:.06em;margin:20px 0 10px">ICON</div>
+<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px">
+<div style="height:42px;border-radius:13px;background:#f4efe6;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:22px">🦄</span></div>
+<div style="height:42px;border-radius:13px;background:#f4efe6;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:22px">🚀</span></div>
+<div style="height:42px;border-radius:13px;background:#a3bf9a;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:22px">⚽</span></div>
+<div style="height:42px;border-radius:13px;background:#f4efe6;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:22px">🐢</span></div>
+<div style="height:42px;border-radius:13px;background:#f4efe6;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:22px">🌸</span></div>
+<div style="height:42px;border-radius:13px;background:#f4efe6;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:22px">🐳</span></div>
+<div style="height:42px;border-radius:13px;background:#f4efe6;display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:20px;color:rgba(58,49,40,.35)">more_horiz</span></div>
+</div>
+</div>
+</div>
+<div style="width:100%;height:58px;border-radius:29px;background:#b3a3d9;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(107,88,166,.28);margin-top:24px"><span style="font:800 19px/1 Nunito,sans-serif;color:#fff">Done — 3 people</span></div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="2d">
+<div class="dv-olabel"><a class="dv-oid" href="#2d">2d</a>Step 4 — Confirm timezone</div>
+<div class="dv-card" style="width:1120px;border-radius:16px">
+<div style="background:#efe9df;padding:64px 0;display:flex;flex-direction:column;align-items:center;min-height:640px">
+<div style="display:flex;gap:8px;justify-content:center;margin-bottom:56px">
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:26px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+</div>
+<div style="width:480px;background:#faf5ec;border-radius:28px;box-shadow:0 8px 28px rgba(58,49,40,.12);padding:52px 44px;display:flex;flex-direction:column;gap:26px">
+<div style="align-self:center;width:110px;height:110px;border-radius:50%;background:#f7ecd6;display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:66px;color:#c98a2c">schedule</span></div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:800 30px/1.2 Nunito,sans-serif;color:#3a3128;text-align:center;letter-spacing:-.4px">Is this your time?</div>
+<div style="font:600 17px/1.5 Nunito,sans-serif;color:rgba(58,49,40,.52);text-align:center">So "tomorrow" starts when your day does.</div>
+</div>
+<div style="background:#fff;border-radius:22px;padding:20px;box-shadow:0 2px 8px rgba(58,49,40,.07);display:flex;flex-direction:column;align-items:center;gap:6px">
+<div style="font:800 24px/1.2 Nunito,sans-serif;color:#3a3128">Asia / Jerusalem</div>
+<div style="font:600 16px/1.3 Nunito,sans-serif;color:rgba(58,49,40,.45)">GMT+3 · 4:12 pm right now</div>
+<div style="display:flex;align-items:center;gap:6px;margin-top:8px;background:#eef4ec;border-radius:20px;padding:6px 12px"><span class="ms" style="font-size:17px;color:#7aa96f">my_location</span><span style="font:700 12.5px/1 Nunito,sans-serif;color:#5f7f56">Detected from your device</span></div>
+</div>
+<div style="width:100%;height:58px;border-radius:29px;background:#b3a3d9;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(107,88,166,.28)"><span style="font:800 19px/1 Nunito,sans-serif;color:#fff">Yes, that's right</span></div>
+<div style="font:700 14px/1 Nunito,sans-serif;color:rgba(58,49,40,.42);text-align:center">Choose a different timezone</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="2e">
+<div class="dv-olabel"><a class="dv-oid" href="#2e">2e</a>Step 5 — Preview the board</div>
+<div class="dv-card" style="width:1120px;border-radius:16px">
+<div style="background:#efe9df;padding:64px 0;display:flex;flex-direction:column;align-items:center;min-height:640px">
+<div style="display:flex;gap:8px;justify-content:center;margin-bottom:40px">
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:26px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:rgba(58,49,40,.15)"></div>
+</div>
+<div style="text-align:center;margin-bottom:24px">
+<div style="font:800 32px/1.2 Nunito,sans-serif;color:#3a3128;letter-spacing:-.4px">Here's tomorrow</div>
+<div style="font:600 17px/1.45 Nunito,sans-serif;color:rgba(58,49,40,.48);margin-top:6px">This is what the kids will see.</div>
+</div>
+<div style="width:900px;background:#faf5ec;border-radius:28px;box-shadow:0 8px 28px rgba(58,49,40,.12);padding:28px 28px 26px;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:center;gap:10px">
+<span class="ms" style="font-size:30px;color:#e8a33d">wb_twilight</span>
+<div style="font:800 24px/1 Nunito,sans-serif;color:#3a3128">Tomorrow</div>
+<div style="font:600 16px/1 Nunito,sans-serif;color:rgba(58,49,40,.42);padding-top:3px">Wednesday</div>
+<div style="flex:1"></div>
+<div style="display:flex;gap:6px">
+<div style="width:32px;height:32px;border-radius:50%;background:#b3a3d9;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:17px">🦄</span></div>
+<div style="width:32px;height:32px;border-radius:50%;background:#e6ab84;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:17px">🚀</span></div>
+<div style="width:32px;height:32px;border-radius:50%;background:#a3bf9a;display:flex;align-items:center;justify-content:center"><span class="emo" style="font-size:17px">⚽</span></div>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:14px">
+<div style="background:#f3d9a0;border-radius:22px;padding:22px 14px;display:flex;flex-direction:column;align-items:center;gap:12px;min-height:190px"><span class="ms" style="font-size:64px;color:#c98a2c">wb_sunny</span><div style="flex:1"></div><div style="font:800 17px/1 Nunito,sans-serif;color:#8a6420">Wake up</div><div style="font:700 13px/1 Nunito,sans-serif;color:rgba(138,100,32,.7)">7:00 am</div></div>
+<div style="background:#b3a3d9;border-radius:22px;padding:22px 14px;display:flex;flex-direction:column;align-items:center;gap:12px;min-height:190px"><span class="emo" style="font-size:60px">🎒</span><div style="flex:1"></div><div style="font:800 17px/1 Nunito,sans-serif;color:#fff">School</div><div style="font:700 13px/1 Nunito,sans-serif;color:rgba(255,255,255,.78)">8:00 am</div></div>
+<div style="background:#a3bf9a;border-radius:22px;padding:22px 14px;display:flex;flex-direction:column;align-items:center;gap:12px;min-height:190px"><span class="emo" style="font-size:60px">🩺</span><div style="flex:1"></div><div style="font:800 17px/1 Nunito,sans-serif;color:#fff">Doctor</div><div style="font:700 13px/1 Nunito,sans-serif;color:rgba(255,255,255,.78)">3:30 pm</div></div>
+<div style="background:#b3a3d9;border-radius:22px;padding:22px 14px;display:flex;flex-direction:column;align-items:center;gap:12px;min-height:190px"><span class="emo" style="font-size:60px">💃</span><div style="flex:1"></div><div style="font:800 17px/1 Nunito,sans-serif;color:#fff">Dance</div><div style="font:700 13px/1 Nunito,sans-serif;color:rgba(255,255,255,.78)">4:00 pm</div></div>
+<div style="background:#e6ab84;border-radius:22px;padding:22px 14px;display:flex;flex-direction:column;align-items:center;gap:12px;min-height:190px"><span class="emo" style="font-size:60px">⚽</span><div style="flex:1"></div><div style="font:800 17px/1 Nunito,sans-serif;color:#fff">Playdate</div><div style="font:700 13px/1 Nunito,sans-serif;color:rgba(255,255,255,.78)">5:30 pm</div></div>
+<div style="background:#3f3550;border-radius:22px;padding:22px 14px;display:flex;flex-direction:column;align-items:center;gap:12px;min-height:190px"><span class="ms" style="font-size:60px;color:#e8d9a8">bedtime</span><div style="flex:1"></div><div style="font:800 17px/1 Nunito,sans-serif;color:#fff">Bedtime</div><div style="font:700 13px/1 Nunito,sans-serif;color:rgba(255,255,255,.78)">7:30 pm</div></div>
+</div>
+</div>
+<div style="width:300px;height:58px;border-radius:29px;background:#b3a3d9;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(107,88,166,.28);margin-top:24px"><span style="font:800 19px/1 Nunito,sans-serif;color:#fff">Continue</span></div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="2f">
+<div class="dv-olabel"><a class="dv-oid" href="#2f">2f</a>Step 6 — Connect WhatsApp (pending)</div>
+<div class="dv-card" style="width:1120px;border-radius:16px">
+<div style="background:#efe9df;padding:64px 0;display:flex;flex-direction:column;align-items:center;min-height:640px">
+<div style="display:flex;gap:8px;justify-content:center;margin-bottom:56px">
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:26px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+</div>
+<div style="width:480px;background:#faf5ec;border-radius:28px;box-shadow:0 8px 28px rgba(58,49,40,.12);padding:52px 44px;display:flex;flex-direction:column;gap:26px">
+<div style="align-self:center;width:92px;height:92px;border-radius:50%;background:#e7f7ed;display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:52px;color:#25963f">chat</span></div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font:800 30px/1.2 Nunito,sans-serif;color:#3a3128;text-align:center;letter-spacing:-.4px">Add events by message</div>
+<div style="font:600 17px/1.5 Nunito,sans-serif;color:rgba(58,49,40,.52);text-align:center">Text us "dentist Tuesday 4pm" and it lands on the board.</div>
+</div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:12px">
+<div style="font:800 26px/1.2 Nunito,sans-serif;color:#3a3128;letter-spacing:.5px">+1 (415) 555-0148</div>
+<div style="height:42px;padding:0 18px;border-radius:21px;background:#f4efe6;display:flex;align-items:center;gap:8px"><span class="ms" style="font-size:19px;color:#7d6f5f">content_copy</span><span style="font:800 14px/1 Nunito,sans-serif;color:#5c5145">Copy number</span></div>
+</div>
+<div style="display:flex;align-items:center;justify-content:center;gap:10px">
+<div style="display:flex;gap:5px">
+<div style="width:8px;height:8px;border-radius:50%;background:#c9a24a;animation:waitDot 1.4s ease-in-out infinite"></div>
+<div style="width:8px;height:8px;border-radius:50%;background:#c9a24a;animation:waitDot 1.4s ease-in-out .2s infinite"></div>
+<div style="width:8px;height:8px;border-radius:50%;background:#c9a24a;animation:waitDot 1.4s ease-in-out .4s infinite"></div>
+</div>
+<div style="font:700 14px/1.3 Nunito,sans-serif;color:rgba(58,49,40,.45)">Waiting for your first message</div>
+</div>
+<div style="width:100%;height:58px;border-radius:29px;background:#25963f;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(37,150,63,.26)"><span style="font:800 19px/1 Nunito,sans-serif;color:#fff">Open WhatsApp</span></div>
+<div style="font:700 14px/1 Nunito,sans-serif;color:rgba(58,49,40,.42);text-align:center">Skip and finish setup</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+
+<div class="dv-opt" id="2g">
+<div class="dv-olabel"><a class="dv-oid" href="#2g">2g</a>Desktop — Set a parent PIN</div>
+<div class="dv-card" style="width:1120px;border-radius:16px">
+<div style="background:#efe9df;padding:64px 0;display:flex;flex-direction:column;align-items:center;min-height:640px">
+<div style="display:flex;gap:8px;justify-content:center;margin-bottom:56px">
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:8px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+<div style="width:26px;height:8px;border-radius:4px;background:#b3a3d9"></div>
+</div>
+<div style="width:480px;background:#faf5ec;border-radius:28px;box-shadow:0 8px 28px rgba(58,49,40,.12);padding:52px 44px;display:flex;flex-direction:column;align-items:center;gap:24px">
+<div style="width:92px;height:92px;border-radius:50%;background:#efe6f4;display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:50px;color:#6b58a6">lock</span></div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font:800 28px/1.2 Nunito,sans-serif;color:#3a3128;text-align:center">Set a parent PIN</div>
+<div style="font:600 16px/1.5 Nunito,sans-serif;color:rgba(58,49,40,.52);text-align:center">So the kids can look, but only a parent can change things.</div>
+</div>
+<div style="display:flex;gap:16px">
+<div style="width:16px;height:16px;border-radius:50%;background:#6b58a6"></div>
+<div style="width:16px;height:16px;border-radius:50%;background:#6b58a6"></div>
+<div style="width:16px;height:16px;border-radius:50%;background:rgba(58,49,40,.15)"></div>
+<div style="width:16px;height:16px;border-radius:50%;background:rgba(58,49,40,.15)"></div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,58px);gap:14px;justify-content:center">
+<div style="width:58px;height:58px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font:800 22px/1 Nunito,sans-serif;color:#3a3128;box-shadow:0 2px 6px rgba(58,49,40,.07)">1</div>
+<div style="width:58px;height:58px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font:800 22px/1 Nunito,sans-serif;color:#3a3128;box-shadow:0 2px 6px rgba(58,49,40,.07)">2</div>
+<div style="width:58px;height:58px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font:800 22px/1 Nunito,sans-serif;color:#3a3128;box-shadow:0 2px 6px rgba(58,49,40,.07)">3</div>
+<div style="width:58px;height:58px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font:800 22px/1 Nunito,sans-serif;color:#3a3128;box-shadow:0 2px 6px rgba(58,49,40,.07)">4</div>
+<div style="width:58px;height:58px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font:800 22px/1 Nunito,sans-serif;color:#3a3128;box-shadow:0 2px 6px rgba(58,49,40,.07)">5</div>
+<div style="width:58px;height:58px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font:800 22px/1 Nunito,sans-serif;color:#3a3128;box-shadow:0 2px 6px rgba(58,49,40,.07)">6</div>
+<div style="width:58px;height:58px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font:800 22px/1 Nunito,sans-serif;color:#3a3128;box-shadow:0 2px 6px rgba(58,49,40,.07)">7</div>
+<div style="width:58px;height:58px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font:800 22px/1 Nunito,sans-serif;color:#3a3128;box-shadow:0 2px 6px rgba(58,49,40,.07)">8</div>
+<div style="width:58px;height:58px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font:800 22px/1 Nunito,sans-serif;color:#3a3128;box-shadow:0 2px 6px rgba(58,49,40,.07)">9</div>
+<div style="width:58px;height:58px"></div>
+<div style="width:58px;height:58px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font:800 22px/1 Nunito,sans-serif;color:#3a3128;box-shadow:0 2px 6px rgba(58,49,40,.07)">0</div>
+<div style="width:58px;height:58px;display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:24px;color:rgba(58,49,40,.4)">backspace</span></div>
+</div>
+<div style="font:700 14px/1 Nunito,sans-serif;color:rgba(58,49,40,.42)">Skip — I'll set this up later</div>
+</div>
+</div>
+</div>
+</div>
+
+<p class="dv-next">All six carry over unchanged in content — only the frame (480–900px centered card vs. full-bleed phone) and step 3's side-by-side list+editor differ. New PIN step (<a href="#1g">1g</a>/<a href="#2g">2g</a>) added at the end of the flow, also editable later from Settings. Try next: "add a wide-screen sidebar with all 6 step names instead of dots"</p>
+</section>
+</x-dc>
+</body>
+</html>

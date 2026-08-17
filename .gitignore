@@ -1,0 +1,13 @@
+node_modules/
+web/dist/
+.vite/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+
+# Portable Node.js toolchain downloaded for local dev in sandboxed
+# environments without a system Node install — never commit, never needed
+# on Railway (which provisions its own Node via Nixpacks).
+.tools/

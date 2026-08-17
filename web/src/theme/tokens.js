@@ -1,0 +1,104 @@
+// Single source of truth for colors, spacing, radii, type and shadows —
+// imported everywhere (frontend guardrail 5). Values are lifted directly
+// from the approved Claude Design mocks (Tomorrow Board / Settings Home /
+// Onboarding Flow) so the kid dashboard, Settings Home, and onboarding stay
+// visually one system rather than three that merely resemble each other.
+
+export const color = {
+  // page / surface
+  page: '#efe9df',
+  surface: '#faf5ec',
+  surfaceInset: '#f4efe6',
+  white: '#ffffff',
+
+  // ink (text), expressed as rgba so callers can still layer opacity via
+  // the *Alpha helpers below when a mock calls for e.g. ".48"
+  ink: '#3a3128',
+  inkRgb: '58,49,40',
+
+  // person / activity palette (assignable to family members, cycled in order)
+  personPurple: '#b3a3d9',
+  personApricot: '#e6ab84',
+  personSage: '#a3bf9a',
+  personPink: '#e2b6c4',
+  personTeal: '#8fc4c0',
+  personGold: '#f0cf8e',
+
+  // day boundary + night
+  sun: '#e8a33d',
+  night: '#3f3550',
+  nightIcon: '#e8d9a8',
+  neutralCard: '#e4ddcd',
+  neutralIcon: '#9c9280',
+
+  // accent families: [text/icon, tint background]
+  accentSettings: '#6b58a6',
+  accentSettingsTint: '#efe6f4',
+  accentTimezone: '#c98a2c',
+  accentTimezoneTint: '#f7ecd6',
+  accentWhatsapp: '#25963f',
+  accentWhatsappTint: '#e7f7ed',
+  accentCalendar: '#4a7fae',
+  accentCalendarTint: '#e9eefb',
+};
+
+export function ink(alpha) {
+  return `rgba(${color.inkRgb},${alpha})`;
+}
+
+export const personPalette = [
+  color.personPurple,
+  color.personApricot,
+  color.personSage,
+  color.personPink,
+  color.personTeal,
+  color.personGold,
+];
+
+export const kidIconChoices = ['🦄', '🚀', '⚽', '🐢', '🌸', '🐳', '🎨', '🦋'];
+
+export const font = {
+  family: "Nunito, system-ui, sans-serif",
+  icon: "'Material Symbols Rounded'",
+  emoji: "'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif",
+};
+
+export const weight = { regular: 400, semibold: 600, bold: 700, heavy: 800 };
+
+export const radius = {
+  sm: 14,
+  md: 18,
+  lg: 22,
+  xl: 26,
+  xxl: 28,
+  pill: 32,
+  round: '50%',
+  card: 34, // outer phone-frame radius used across onboarding/settings mocks
+};
+
+export const spacing = {
+  xxs: 4,
+  xs: 6,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  xxl: 24,
+  xxxl: 32,
+  huge: 44,
+};
+
+export const shadow = {
+  card: `0 2px 8px ${ink(0.07)}`,
+  cardSoft: `0 2px 6px ${ink(0.06)}`,
+  raised: `0 3px 12px ${ink(0.1)}`,
+  buttonTint: (rgb) => `0 3px 10px rgba(${rgb},.28)`,
+};
+
+// The 4-5 item cap for the kid dashboard (design principle: cap visible
+// items, never a dense full-day listing). Wake-up/bedtime bookends don't
+// count toward this — they're day boundaries, not activities.
+export const KID_DASHBOARD_ITEM_CAP = 5;
+
+export const theme = { color, ink, personPalette, kidIconChoices, font, weight, radius, spacing, shadow, KID_DASHBOARD_ITEM_CAP };
+export default theme;

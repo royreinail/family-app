@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend-dev-preview",
+      "runtimeExecutable": "/Users/royreina/Family app/.tools/node-v24.19.0-darwin-arm64/bin/node",
+      "runtimeArgs": ["/Users/royreina/Family app/server/scripts/devPreview.js"],
+      "port": 3000
+    },
+    {
+      "name": "web-dev",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["/Users/royreina/Family app/web/run-dev.sh"],
+      "port": 5173
+    }
+  ]
+}
