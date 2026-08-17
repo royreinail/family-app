@@ -1,0 +1,8 @@
+# Override Nixpacks' default install command (npm ci) with npm install.
+# npm ci installs strictly from package-lock.json's recorded platform
+# entries; npm install re-resolves optional platform-specific packages
+# (e.g. @rollup/rollup-linux-x64-gnu) against the actual build platform,
+# which is what avoids https://github.com/npm/cli/issues/4828 — a lockfile
+# generated on one OS/arch missing another platform's optional dependency.
+[phases.install]
+cmds = ["npm install"]
