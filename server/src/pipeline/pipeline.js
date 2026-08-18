@@ -11,7 +11,7 @@ import * as tasksRepo from '../repositories/tasks.js';
 import * as botConfigRepo from '../repositories/botConfig.js';
 import { evaluateRules } from '../rules/engine.js';
 import { matchCommand, helpReply, formatTaskList, parseCorrectedTime } from './commands.js';
-import { factsFromCandidate, confirmReply, qualifyReply, clarifyReply } from './classify.js';
+import { factsFromCandidate, confirmReply, qualifyReply, clarifyReply, addOneHour } from './classify.js';
 import { scheduleReminder } from './reminders.js';
 
 async function withRetry(fn, { attempts = 3, baseDelayMs = 200 } = {}) {
@@ -44,7 +44,7 @@ async function withRetry(fn, { attempts = 3, baseDelayMs = 200 } = {}) {
  */
 export async function handleIncomingMessage(message, deps) {
   const { familyId, externalMessageId, senderIdentifier, text, replyToExtractionLogId } = message;
-  const { pool, llmExtract, calendar, messenger } = deps;
+  const { pool, llmExtract, calendar, messenger, timeZone = 'UTC' } = deps;
 
   // 1. Write-ahead log — the instant the "webhook fires", before anything else.
   const log = await extractionLogRepo.create(
@@ -54,7 +54,7 @@ export async function handleIncomingMessage(message, deps) {
 
   // 2. Correction-reply path — not a command, not a rule match.
   if (replyToExtractionLogId) {
-    return handleCorrection({ log, replyToExtractionLogId, text, calendar, messenger, senderIdentifier, pool });
+    return handleCorrection({ log, replyToExtractionLogId, text, calendar, messenger, senderIdentifier, pool, timeZone });
   }
 
   // 2b. Commands check — hardcoded, before gate rules, before any LLM call.
@@ -98,10 +98,12 @@ export async function handleIncomingMessage(message, deps) {
   let result;
   if (action.type === 'write_calendar') {
     const routing = await evaluateRules('assessment', 'event_task_routing', facts, { familyId, pool });
+    const end = addOneHour(candidate.date, candidate.time);
     const eventRef = await calendar.createEvent({
       title: candidate.title || 'Untitled event',
       startDateTime: `${candidate.date}T${candidate.time}:00`,
-      endDateTime: `${candidate.date}T${candidate.time}:00`,
+      endDateTime: `${end.date}T${end.time}:00`,
+      timeZone,
     });
     await extractionLogRepo.updateState(
       log.id,
@@ -180,7 +182,7 @@ async function handleCommand({ command, log, familyId, senderIdentifier, calenda
   return { outcome: 'unknown_command', log };
 }
 
-async function handleCorrection({ log, replyToExtractionLogId, text, calendar, messenger, senderIdentifier, pool }) {
+async function handleCorrection({ log, replyToExtractionLogId, text, calendar, messenger, senderIdentifier, pool, timeZone }) {
   const original = await extractionLogRepo.findById(replyToExtractionLogId, pool);
   if (!original) {
     await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
@@ -194,7 +196,11 @@ async function handleCorrection({ log, replyToExtractionLogId, text, calendar, m
   const ref = original.resulting_event_ref;
   if (ref?.provider === 'google' && newTime) {
     const startDateTime = `${updatedCandidate.date}T${newTime}:00`;
-    await calendar.updateEvent(ref.external_id, { start: { dateTime: startDateTime }, end: { dateTime: startDateTime } });
+    const end = addOneHour(updatedCandidate.date, newTime);
+    await calendar.updateEvent(ref.external_id, {
+      start: { dateTime: startDateTime, timeZone },
+      end: { dateTime: `${end.date}T${end.time}:00`, timeZone },
+    });
   }
 
   await extractionLogRepo.updateState(

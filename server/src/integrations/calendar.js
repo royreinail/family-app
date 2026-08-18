@@ -21,15 +21,18 @@ function clientFor(credentials) {
 /**
  * @returns {Promise<{provider: 'google', external_id: string}>}
  */
-export async function createEvent(credentials, { title, startDateTime, endDateTime, colorId, attendeeNames } = {}) {
+export async function createEvent(credentials, { title, startDateTime, endDateTime, timeZone, colorId, attendeeNames } = {}) {
   const calendar = clientFor(credentials);
   const { data } = await calendar.events.insert({
     calendarId: credentials.calendar_id || 'primary',
     requestBody: {
       summary: title,
       description: attendeeNames?.length ? `With: ${attendeeNames.join(', ')}` : undefined,
-      start: { dateTime: startDateTime },
-      end: { dateTime: endDateTime },
+      // Google's API rejects a bare dateTime (no UTC offset) unless timeZone
+      // is also given — our extracted times are wall-clock in the family's
+      // own timezone, so this has to travel with every write.
+      start: { dateTime: startDateTime, timeZone },
+      end: { dateTime: endDateTime, timeZone },
       colorId,
     },
   });

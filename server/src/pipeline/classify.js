@@ -32,3 +32,20 @@ export function qualifyReply(candidate) {
 export function clarifyReply() {
   return "I couldn't find a date in that — what day is it for?";
 }
+
+// Extraction only ever gives a start time, but a zero-duration calendar
+// event is odd UX — default every write to a 1-hour block. Uses UTC as
+// neutral scratch space for the date-rollover arithmetic only; the
+// resulting date/time is still wall-clock in the family's own timezone,
+// same as the input (see calendar.js's timeZone field on the actual write).
+export function addOneHour(dateStr, timeStr) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const [hour, minute] = timeStr.split(':').map(Number);
+  const d = new Date(Date.UTC(year, month - 1, day, hour, minute));
+  d.setUTCHours(d.getUTCHours() + 1);
+  const pad = (n) => String(n).padStart(2, '0');
+  return {
+    date: `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`,
+    time: `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`,
+  };
+}
