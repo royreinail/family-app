@@ -317,6 +317,8 @@ Kept up to date as the implementation proceeds — same reasoning as the bot cap
 
 **Fix: edit/remove family members (backlog 1.2), plus a cross-family authorization gap found while building it.** `FamilyMembersStep.jsx` previously only supported creating new members — the existing member chips were read-only display, no click target, no delete affordance. The same single draft card now serves both create and edit: tapping a member chip loads them into the draft (`draft.id` set) and the card's button relabels to "Save changes"; a "New person" chip appears alongside the members to reset back to a blank create draft. Remove is a two-tap affordance ("Remove {name}" → "Tap again to remove") rather than a native `confirm()` popup or a modal, matching the app's existing no-interruption tone. While touching `PUT`/`DELETE /family-members/:id` to wire this up, found both routes (and the repository functions underneath, `familyMembersRepo.update`/`softDelete`) only ever filtered by the member's own `id` — never by `family_id` — so PIN verification was the only gate, and any signed-in family that learned another family's member UUID could edit or delete that member. Fixed by threading `req.familyId` through both the route and repository layer, scoping the `UPDATE` to `id = $1 and family_id = $2`; a mismatch now returns `null`/`false` from the repository and a 404 from the route instead of silently no-op'ing on the wrong row (or, before the fix, succeeding on it). Regression tests in `tests/regression/familyMemberAuth.test.js` create two families and assert cross-family update/delete attempts leave the real row untouched.
 
+**Fix: calendar selection (backlog 2.1).** `calendar_id` on `google_credentials` already existed and every write already respected it (`calendar.js`'s `createEvent`/`updateEvent`/`deleteEvent`/`listEvents` all use `credentials.calendar_id || 'primary'`) — the missing piece was purely a way for a family to see and change it. Added `calendar.listCalendars(credentials)` (Google's `calendarList.list`, filtered to `accessRole` of `owner`/`writer` since a write to a read-only shared calendar would just fail) and `googleCredentialsRepo.setCalendarId(familyId, calendarId)` (scoped to the calling family, mirroring the family-member authorization fix above). New Settings Home row ("Calendar") lists every calendar the connected Google account can write to, radio-select, PIN-gated save — same settings-editor pattern as Timezone/WhatsApp. Deliberately settings-only, no onboarding step: a freshly-connected account only has its own calendars to pick from at that point anyway, so there's nothing meaningful to choose until later. Verified via the dev preview: not-yet-connected state, and — since the preview's fake OAuth tokens can't reach the real Google API — the "connected but couldn't load" fallback state, which caught a real bug in `CalendarSettings.jsx` before it shipped: the shared `api/client.js` `request()` helper throws on any non-2xx response (including this route's deliberate `502 calendar_unavailable`), so the first version of the `.catch` mislabeled "connected, API call failed" as "not connected" — fixed by having the catch branch assume `connected: true` (a clean "not connected" only ever arrives as a normal 200, never a thrown error). The success path (listing and picking from a family's *real* calendars) still needs live verification with an actual Google account — ask Roy to confirm on the next visit to Settings → Calendar.
+
 **Known gap: reminder sends need a WhatsApp message template, not freeform text.** `messenger.send()` (`server/src/integrations/messenger.js`) always sends `type: "text"`, which only works inside the 24-hour customer-service window a user opens by messaging the bot. The bot capture→reply path is always inside that window (reply fires immediately), so it's unaffected. Reminder-on-request is not: `reminder_datetime` is very often hours or days after the triggering message, i.e. outside the window by the time `sweepDueReminders` fires it, which WhatsApp's policy classifies as a business-initiated message requiring a pre-approved message template. Fixing this means creating a template (e.g. "Reminder: {{1}}"), submitting it for Meta review, and branching `messenger.send` to use the `template` message type for reminder sends specifically. Not fixed yet — flagging so a reminder silently/loudly failing outside the window isn't mistaken for a pipeline bug.
 
 ---
@@ -328,7 +330,9 @@ notes are Roy's own from the handoff, kept verbatim where useful. Status updated
 
 **Onboarding & family member management**
 - Photo upload per family member during onboarding (currently no upload path — mocks show an "Add
-  photo" affordance but there's no backend for it yet).
+  photo" affordance but there's no backend for it yet). — **deferred to Phase 2** (Roy's call, Aug 2026
+  post-launch triage) — icon+color already covers member identification for Phase 1; not worth the
+  storage/upload-endpoint work until the rest of this backlog lands.
 - Edit/remove an existing family member, from both onboarding and Settings → Family Members. — ✅ fixed
 - **Multi-parent / shared family support** — no linking mechanism today; two parents onboarding
   independently get two isolated families (separate calendar, separate WhatsApp connection, separate
@@ -339,11 +343,12 @@ notes are Roy's own from the handoff, kept verbatim where useful. Status updated
   independently-permissioned parent identities" and Phase 3's "full co-parenting UX." Treat as one
   design pass before implementation, not folded into a quick-fix batch.
 
-**Calendar configuration**
+**Calendar configuration — ✅ fixed**
 - No way to choose which Google Calendar events get written to — currently defaults to whichever
   calendar `google_credentials.calendar_id` was set to at OAuth time (effectively the signed-in parent's
   primary calendar). Needed: let a family designate a target calendar (e.g. a shared family calendar
-  distinct from either parent's personal one).
+  distinct from either parent's personal one). Fixed: see "Fix: calendar selection (backlog 2.1)" in
+  the build log below.
 
 **Settings navigation — ✅ fixed**
 - No back button from Settings Home to the kid dashboard, and none from a settings sub-page back to the

@@ -57,6 +57,19 @@ export async function deleteEvent(credentials, externalId) {
   });
 }
 
+// Backlog 2.1 — lets a family choose which of their Google Calendars events
+// get written to, instead of always defaulting to whichever calendar was
+// primary at OAuth time. Returns every calendar the signed-in Google account
+// can write to (own + shared-with-write-access), since a event write to a
+// read-only shared calendar would just fail.
+export async function listCalendars(credentials) {
+  const calendar = clientFor(credentials);
+  const { data } = await calendar.calendarList.list();
+  return (data.items || [])
+    .filter((cal) => cal.accessRole === 'owner' || cal.accessRole === 'writer')
+    .map((cal) => ({ id: cal.id, summary: cal.summary, primary: !!cal.primary }));
+}
+
 // Used by the kid dashboard — pulls straight from Google Calendar (filtered
 // to a date range), never duplicated into the app's own database.
 export async function listEvents(credentials, { timeMin, timeMax }) {

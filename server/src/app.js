@@ -6,6 +6,7 @@ import { authRouter } from './routes/auth.js';
 import { familyRouter } from './routes/family.js';
 import { botConfigRouter } from './routes/botConfig.js';
 import { dashboardRouter } from './routes/dashboard.js';
+import { calendarSettingsRouter } from './routes/calendarSettings.js';
 import { webhookRouter } from './routes/webhook.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -72,6 +73,7 @@ instance of the app for your family.</p>
   app.use('/api', familyRouter());
   app.use('/api', botConfigRouter());
   app.use('/api', dashboardRouter());
+  app.use('/api', calendarSettingsRouter());
   app.use('/webhook', webhookRouter());
 
   // Single-service Railway deploy: this server also serves the built React

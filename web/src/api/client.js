@@ -52,3 +52,8 @@ export const confirmBotConfig = (phoneNumber) =>
 
 // -- kid dashboard ------------------------------------------------------------
 export const getTomorrow = () => request('/api/dashboard/tomorrow');
+
+// -- calendar selection (backlog 2.1) -----------------------------------------
+export const getCalendarList = () => request('/api/calendar/list');
+export const setSelectedCalendar = (calendarId) =>
+  request('/api/calendar/selected', { method: 'PUT', body: json({ calendarId }) });

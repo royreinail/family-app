@@ -7,6 +7,7 @@ const ROWS = [
   { key: 'family-members', label: 'Family Members', icon: 'groups', tint: color.accentSettingsTint, fg: color.accentSettings },
   { key: 'timezone', label: 'Timezone', icon: 'schedule', tint: color.accentTimezoneTint, fg: color.accentTimezone },
   { key: 'whatsapp', label: 'WhatsApp Connection', icon: 'chat', tint: color.accentWhatsappTint, fg: color.accentWhatsapp },
+  { key: 'calendar', label: 'Calendar', icon: 'event_available', tint: color.accentCalendarTint, fg: color.accentCalendar },
   { key: 'pin', label: 'PIN & Security', icon: 'password', tint: color.accentSettingsTint, fg: color.accentSettings },
 ];
 

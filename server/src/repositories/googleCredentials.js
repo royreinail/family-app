@@ -27,3 +27,14 @@ export async function upsert({ familyId, googleAccountEmail, accessToken, refres
   );
   return rows[0];
 }
+
+// Backlog 2.1 — just the target calendar, leaves tokens untouched. Returns
+// null if the family hasn't connected Google Calendar at all yet, so the
+// route can tell "nothing to update" apart from a real write failure.
+export async function setCalendarId(familyId, calendarId, pool = getPool()) {
+  const { rows } = await pool.query(
+    `update google_credentials set calendar_id = $2 where family_id = $1 and deleted_at is null returning *`,
+    [familyId, calendarId]
+  );
+  return rows[0] ?? null;
+}
