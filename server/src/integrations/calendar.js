@@ -63,22 +63,27 @@ export async function deleteEvent(credentials, externalId) {
   });
 }
 
-// Backlog 2.1 — lets a family choose which of their Google Calendars events
-// get written to, instead of always defaulting to whichever calendar was
-// primary at OAuth time. Returns every calendar the signed-in Google account
-// can write to (own + shared-with-write-access), since a event write to a
-// read-only shared calendar would just fail.
+// Backlog 2.1 — pure filter+map from Google's raw calendarList.list() item
+// shape to what the app needs. Split out from listCalendars() specifically
+// so it has real test coverage (tests/regression/calendarList.test.js, built
+// from a real captured response — see that file) without needing to mock
+// the Google API call itself, same reasoning as classify.js's other pulled-
+// out pure helpers.
+export function mapCalendarListItems(items) {
+  return (items || [])
+    .filter((cal) => cal.accessRole === 'owner' || cal.accessRole === 'writer')
+    .map((cal) => ({ id: cal.id, summary: cal.summary, primary: !!cal.primary }));
+}
+
+// Lets a family choose which of their Google Calendars events get written
+// to, instead of always defaulting to whichever calendar was primary at
+// OAuth time. Returns every calendar the signed-in Google account can write
+// to (own + shared-with-write-access), since a write to a read-only shared
+// calendar would just fail.
 export async function listCalendars(credentials) {
   const calendar = clientFor(credentials);
   const { data } = await calendar.calendarList.list();
-  // TEMP DEBUG (remove after capturing a real response shape for
-  // tests/regression/calendarList.test.js) — logs the raw Google response
-  // so a real fixture can be built instead of a guessed one. No token data
-  // in here, just calendar metadata (id/summary/accessRole/etc).
-  console.log('DEBUG calendarList.list raw items:', JSON.stringify(data.items));
-  return (data.items || [])
-    .filter((cal) => cal.accessRole === 'owner' || cal.accessRole === 'writer')
-    .map((cal) => ({ id: cal.id, summary: cal.summary, primary: !!cal.primary }));
+  return mapCalendarListItems(data.items);
 }
 
 // Used by the kid dashboard — pulls straight from Google Calendar (filtered
