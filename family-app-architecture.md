@@ -343,9 +343,11 @@ notes are Roy's own from the handoff, kept verbatim where useful. Status updated
   primary calendar). Needed: let a family designate a target calendar (e.g. a shared family calendar
   distinct from either parent's personal one).
 
-**Settings navigation**
+**Settings navigation — ✅ fixed**
 - No back button from Settings Home to the kid dashboard, and none from a settings sub-page back to the
-  Settings Home menu.
+  Settings Home menu. Fixed: `PhoneFrame`'s new `onBack` prop renders a small back arrow (top-left, same
+  treatment as the dashboard's settings gear); wired into Settings Home, the PIN gate, and every settings
+  sub-page. Onboarding's own use of `PhoneFrame` deliberately has no `onBack` — nothing to return to mid-signup.
 
 **Event audience & kid visibility**
 - Events have no audience concept — nothing distinguishes "for a parent" from "for a specific kid."
