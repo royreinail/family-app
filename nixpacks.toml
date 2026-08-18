@@ -4,5 +4,11 @@
 # (e.g. @rollup/rollup-linux-x64-gnu) against the actual build platform,
 # which is what avoids https://github.com/npm/cli/issues/4828 — a lockfile
 # generated on one OS/arch missing another platform's optional dependency.
+#
+# This file alone wasn't enough on Railway in practice — the generated
+# build plan (and its literal "npm ci" vs "npm install" choice) gets
+# cached per source snapshot, so also set NIXPACKS_INSTALL_CMD=npm install
+# as a service Variable in the Railway dashboard, which Nixpacks reads
+# directly at plan-generation time regardless of caching.
 [phases.install]
 cmds = ["npm install"]
