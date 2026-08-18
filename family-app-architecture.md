@@ -418,3 +418,14 @@ notes are Roy's own from the handoff, kept verbatim where useful. Status updated
   match (e.g. "remind me to pack the gym bag Thursday night, gym class is Friday 9am" — a real event plus
   an unrelated reminder, acceptance fixture 7's shape), the existing calendar-write-plus-separate-reminder
   behavior is unchanged and covered by a regression test alongside the new case.
+
+**Settings back button: spacing regression, ✅ fixed — a real React inline-style gotcha worth remembering**
+`PhoneFrame`'s `onBack` support was first added with `paddingTop: onBack ? 24 : undefined` sitting alongside
+the existing `padding` shorthand in the same style object. React does **not** skip a style key whose value
+is `undefined` — it actively clears that specific longhand, even one just set moments earlier by a shorthand
+key processed first in the same object. So on every screen without `onBack` (all of onboarding), this wiped
+out the entire top padding, jamming the progress dots and every screen's content flush against the rounded
+top corner. Fixed by only including `paddingTop` in the style object at all when `onBack` is truthy
+(conditional spread), rather than including the key with a nullish value — the general lesson: never mix a
+CSS shorthand and one of its own longhands in the same React inline-style object where the longhand's value
+might be `undefined`; omit the key entirely instead of passing `undefined`.
