@@ -5,9 +5,7 @@ import { Router } from 'express';
 import { google } from 'googleapis';
 import * as familiesRepo from '../repositories/families.js';
 import * as googleCredentialsRepo from '../repositories/googleCredentials.js';
-import * as botConfigRepo from '../repositories/botConfig.js';
-import * as rulesRepo from '../repositories/rules.js';
-import { seedDefaultRules } from '../rules/defaultRules.js';
+import { ensureFamilySetup } from '../services/familySetup.js';
 
 const SCOPES = [
   'https://www.googleapis.com/auth/calendar',
@@ -47,17 +45,10 @@ export function authRouter() {
       }
       if (!family) {
         family = await familiesRepo.create({ name: `${profile.given_name || 'Our'} Family` });
-        const config = await botConfigRepo.create({ familyId: family.id });
-        await botConfigRepo.syncFromEnv(config.id);
       }
-      // Self-heals any family (new or pre-existing) whose rules table is
-      // empty — the same shape of fix as bot_config's syncFromEnv, since a
-      // family created before seeding was wired in here has no gate/
-      // assessment rules at all and the engine silently falls back to its
-      // hardcoded safety defaults, which for extraction_classification is
-      // "stop, no reply" (looks identical to a working-but-quiet bot).
-      const existingRules = await rulesRepo.findAllForFamily(family.id);
-      if (existingRules.length === 0) await seedDefaultRules(family.id);
+      // Self-heals bot_config + rules for any family (new or pre-existing) —
+      // see services/familySetup.js for why this can't just happen once at creation.
+      await ensureFamilySetup(family.id);
 
       await googleCredentialsRepo.upsert({
         familyId: family.id,
@@ -80,8 +71,7 @@ export function authRouter() {
     if (!req.session.familyId) return res.json({ signedIn: false });
     const family = await familiesRepo.findById(req.session.familyId);
     if (!family) return res.json({ signedIn: false });
-    const existingRules = await rulesRepo.findAllForFamily(family.id);
-    if (existingRules.length === 0) await seedDefaultRules(family.id);
+    await ensureFamilySetup(family.id);
     const credentials = await googleCredentialsRepo.findByFamilyId(family.id);
     res.json({
       signedIn: true,

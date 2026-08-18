@@ -45,13 +45,22 @@ export async function syncFromEnv(id, pool = getPool()) {
   return rows[0];
 }
 
+// Appends in application code rather than via SQL's array_append — keeps
+// this portable (pg-mem, used in tests, implements very few native
+// Postgres functions) and avoids a second round-trip to re-read on the
+// "already present" no-op path.
 export async function addAcceptedChatId(id, chatId, pool = getPool()) {
-  const { rows } = await pool.query(
-    `update bot_config set accepted_chat_ids = array_append(accepted_chat_ids, $2), connected_at = coalesce(connected_at, now())
-     where id = $1 and not ($2 = any(accepted_chat_ids)) returning *`,
-    [id, chatId]
+  const { rows } = await pool.query(`select * from bot_config where id = $1`, [id]);
+  const current = rows[0];
+  if (!current) return null;
+  if (current.accepted_chat_ids.includes(chatId)) return current;
+
+  const { rows: updated } = await pool.query(
+    `update bot_config set accepted_chat_ids = $2, connected_at = coalesce(connected_at, now())
+     where id = $1 returning *`,
+    [id, [...current.accepted_chat_ids, chatId]]
   );
-  return rows[0];
+  return updated[0];
 }
 
 // WhatsApp's webhook payload gives sender numbers as bare digits (no "+",
