@@ -378,31 +378,41 @@ notes are Roy's own from the handoff, kept verbatim where useful. Status updated
 
 ## Live testing round 2 — additional items (Aug 18 2026)
 
-**Color coding: match Google Calendar's own event colors**
+**Color coding: match Google Calendar's own event colors — ✅ fixed**
 - Events written to Calendar should carry the color of the family member(s) they're for, and that color
   needs to be the *same* color as what's shown in our own UI (family member picker, kid dashboard) — not
   just a visually-similar one. Google Calendar only accepts event color from its own fixed 11-color
   palette (`colorId` 1–11), so our UI's assignable person-color palette needs to be exactly those 11
   colors, not an independently-chosen set. For an event involving more than one person (or an
   unmatched/ambiguous `person` field), fall back to one default color rather than guessing.
+  Fixed: `server/src/integrations/googleColors.js` is now the canonical list (11 Google colorIds + hex);
+  `web/src/theme/tokens.js`'s `personPalette` matches it value-for-value; `resolveEventColorId`
+  (`pipeline/classify.js`) matches `candidate.person` against real family members and threads `colorId`
+  into every Calendar write, defaulting to Graphite (colorId 8) for no/ambiguous match. Note: the app's
+  own UI chrome (buttons, progress dots) keeps the original soft mock-derived accent colors
+  (`color.personPurple` etc. in tokens.js) — those are unrelated generic accents, not tied to any family
+  member's identity, so they didn't need to change.
 
-**Photo/flyer message extraction not working — real gap, not a bug in existing code**
+**Photo/flyer message extraction — ✅ fixed (image support), Hebrew case not yet independently confirmed**
 - A forwarded photo (a Hebrew-language flyer) produced no extraction at all. Root cause: the webhook
-  handler only ever reads `message.text.body` — image messages were never handled at all, despite being
-  one of the three intake channels this doc scopes for Phase 1 ("Photo of a flyer/schedule"). Needs:
-  downloading the image from WhatsApp's Media API and sending it to the LLM as an actual image (Claude's
-  vision input), not just text. Claude's vision + language understanding is inherently multilingual, so
-  once images are wired up at all, non-English text in a photo (Hebrew included) should generally work
-  without separate i18n engineering — this is really an image-support gap, not a language-support gap.
+  handler only ever read `message.text.body` — image messages were never handled at all, despite being
+  one of the three intake channels this doc scopes for Phase 1 ("Photo of a flyer/schedule"). Fixed:
+  `webhook.js` detects `message.type === 'image'`, downloads the media via `messenger.js`'s new
+  `downloadMedia()` (two-step Meta Graph API fetch: media ID → signed URL → bytes), and `llm.js`'s
+  `extract()` now sends it to Claude as an actual vision content block instead of plain text; the system
+  prompt explicitly says the image may be in any language, including Hebrew, and to extract without
+  translating. Not covered by the automated test suite (same boundary-layer testing philosophy as the
+  rest of `integrations/` — verified via real usage, not mocked unit tests) — needs a real retest with an
+  actual forwarded photo to confirm the Hebrew case specifically now extracts correctly.
 
-**Reminder routing: a pure reminder request became a calendar event instead of a task**
+**Reminder routing: a pure reminder request became a calendar event instead of a task — ✅ fixed**
 - "Remind me to do the laundry at 22:30 today" created a Calendar event titled "laundry" at 22:30,
   rather than going through the tasks + reminder mechanism as expected. Root cause: `extraction_classification`
   only ever looks at date+time field *presence* to route Calendar vs. tasks — it doesn't distinguish "a
   real event with its own date/time" from "a personal task whose only date/time IS the reminder time."
-  Distinguishing signal: when `reminder_requested` is true and the extracted `date`/`time` match
-  `reminder_datetime`, the whole message is just the reminder, not a separate calendar-worthy event —
-  should route to tasks with the reminder attached directly, no calendar write. When they *don't* match
-  (e.g. "remind me to pack the gym bag Thursday night, gym class is Friday 9am" — a real event plus an
-  unrelated reminder, the acceptance-fixture-7 shape), the existing calendar-write-plus-separate-reminder
-  behavior is correct and should be preserved.
+  Fixed via a new `isPureReminder` fact (true when `reminder_requested` and the extracted `date`/`time`
+  exactly match `reminder_datetime`) and a new `extraction_classification:pure_reminder` rule at priority
+  5 (before `date_time`'s 10) routing to a single task-with-reminder, no Calendar write. When they *don't*
+  match (e.g. "remind me to pack the gym bag Thursday night, gym class is Friday 9am" — a real event plus
+  an unrelated reminder, acceptance fixture 7's shape), the existing calendar-write-plus-separate-reminder
+  behavior is unchanged and covered by a regression test alongside the new case.
