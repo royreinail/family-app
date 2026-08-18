@@ -34,8 +34,14 @@ export default function PhoneFrame({ children, padding = '56px 28px 40px', onBac
           // Keep the gap above the button tight (matches the original
           // absolute-positioned look) independent of whatever top padding
           // a given screen asks for — the button's own marginBottom below
-          // is what creates the gap to the content, not this.
-          paddingTop: onBack ? 24 : undefined,
+          // is what creates the gap to the content, not this. Only included
+          // when onBack is set: a style object key present with an
+          // undefined value still clears that longhand in React (it does
+          // NOT just leave whatever the `padding` shorthand above set) —
+          // omitting the key entirely is what actually leaves it alone.
+          // This wiped out top padding on every onBack-less screen
+          // (all of onboarding) until caught in real testing.
+          ...(onBack ? { paddingTop: 24 } : {}),
           display: 'flex',
           flexDirection: 'column',
           overflowY: 'auto',
