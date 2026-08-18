@@ -66,7 +66,7 @@ export async function handleIncomingMessage(message, deps) {
   // 3. Gate rules — cheap, deterministic, can short-circuit before the LLM is called.
   const duplicate = await extractionLogRepo.findDuplicate({ familyId, externalMessageId, excludeId: log.id }, pool);
   const botConfig = await botConfigRepo.findByFamilyId(familyId, pool);
-  const isKnownSender = !!botConfig?.accepted_chat_ids?.includes(senderIdentifier);
+  const isKnownSender = botConfigRepo.isAcceptedSender(botConfig, senderIdentifier);
 
   const gateResult = await evaluateRules(
     'gate',

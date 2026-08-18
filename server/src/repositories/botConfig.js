@@ -54,6 +54,15 @@ export async function addAcceptedChatId(id, chatId, pool = getPool()) {
   return rows[0];
 }
 
+// WhatsApp's webhook payload gives sender numbers as bare digits (no "+",
+// no spaces/dashes), but onboarding's phone-number field invites a
+// human-friendly "+15551234567" format. Compare on digits only so a
+// perfectly correct phone number typed either way still matches.
+export function normalizePhone(value) {
+  return (value || '').replace(/\D/g, '');
+}
+
 export function isAcceptedSender(botConfig, senderIdentifier) {
-  return !!botConfig?.accepted_chat_ids?.includes(senderIdentifier);
+  const target = normalizePhone(senderIdentifier);
+  return !!botConfig?.accepted_chat_ids?.some((id) => normalizePhone(id) === target);
 }
