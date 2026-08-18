@@ -1,6 +1,7 @@
 import { color, ink, weight, KID_DASHBOARD_ITEM_CAP } from '../../theme/tokens.js';
 import { capItems } from '../../theme/scheduleLogic.js';
 import ActivityCard from './ActivityCard.jsx';
+import ActivityStripCard from './ActivityStripCard.jsx';
 import BookendIcon from './BookendIcon.jsx';
 
 const WEEKDAY = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(new Date(Date.now() + 86400000));
@@ -45,12 +46,35 @@ export default function TomorrowBoard({ members, events, showGear, compact = fal
         </div>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: `repeat(${cards.length + 2},1fr)`, gap: compact ? 6 : 18 }}>
+      {/*
+        Two card layouts, both rendered, CSS orientation media query picks
+        which one shows (globals.css) — not a JS resize listener, so there's
+        no flicker/mismatch and it responds immediately on device rotation.
+        Landscape (desktop/kiosk/mobile-landscape): horizontal row of tall
+        tile-cards, unchanged from before. Portrait (real phone, held
+        normally): vertical stack of horizontal strip-cards — approved mock
+        split 5a/5c vs 5b in Tomorrow Board.dc.html.
+      */}
+      <div className="tb-row-layout" style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: `repeat(${cards.length + 2},1fr)`, gap: compact ? 6 : 18 }}>
         <BookendIcon kind="wake" compact={compact} />
         {cards.map((event) => (
           <ActivityCard key={event.id} event={event} members={members} compact={compact} />
         ))}
         <BookendIcon kind="sleep" compact={compact} />
+      </div>
+
+      <div className="tb-stack-layout" style={{ flex: 1, minHeight: 0, flexDirection: 'column', gap: compact ? 6 : 12 }}>
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <BookendIcon kind="wake" compact={compact} />
+        </div>
+        {cards.map((event) => (
+          <div key={event.id} style={{ flex: 1, minHeight: 0 }}>
+            <ActivityStripCard event={event} members={members} compact={compact} />
+          </div>
+        ))}
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <BookendIcon kind="sleep" compact={compact} />
+        </div>
       </div>
     </div>
   );

@@ -59,6 +59,29 @@ button {
   animation: shakeX 0.42s ease;
 }
 
+/* Kid dashboard (TomorrowBoard.jsx): two card layouts, swapped by device
+   orientation via media query rather than a JS resize listener — applies
+   immediately on rotation, no flicker/mismatch. Landscape (desktop, a
+   propped-up kiosk tablet, or a phone turned sideways) keeps the original
+   horizontal row of tall tile-cards. Portrait (a phone held normally, which
+   is how this actually gets glanced at day to day) switches to a vertical
+   stack of horizontal strip-cards. Matches the approved mock's own split
+   (Tomorrow Board.dc.html, options 5a/5c vs 5b) — !important is required
+   here because the row layout's `display: grid` is set inline (it also
+   carries JS-driven values like gridTemplateColumns), and only a stylesheet
+   rule marked !important can override an inline style. */
+.tb-stack-layout {
+  display: none;
+}
+@media (orientation: portrait) {
+  .tb-row-layout {
+    display: none !important;
+  }
+  .tb-stack-layout {
+    display: flex !important;
+  }
+}
+
 @keyframes waitDot {
   0%,
   60%,

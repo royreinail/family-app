@@ -9,7 +9,14 @@ import { color } from './theme/tokens.js';
 function RootRedirect() {
   const { session, loading } = useFamily();
   if (loading) return <div style={{ minHeight: '100vh', background: color.page }} />;
-  const onboarded = session?.signedIn && session?.calendarConnected && session?.family?.pinSet;
+  // PIN is explicitly skippable during onboarding ("I'll set this up
+  // later") — it must never gate whether someone counts as "done", or a
+  // family that skipped it gets sent through the *entire* onboarding
+  // sequence again on every fresh session (any new device/browser, cookie
+  // cleared, etc.), forever. calendarConnected is the one real hard
+  // requirement; everything else (members, timezone, WhatsApp, PIN) is
+  // editable later from Settings.
+  const onboarded = session?.signedIn && session?.calendarConnected;
   return <Navigate to={onboarded ? '/dashboard' : '/onboarding'} replace />;
 }
 
