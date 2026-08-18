@@ -114,3 +114,26 @@ export function overrideObviousRelativeDate(rawInput, candidate, referenceDate) 
   if (/\btoday\b/.test(text) || /\btonight\b/.test(text)) return { ...candidate, date: referenceDate };
   return candidate;
 }
+
+// Backlog 4.1-4.3 (event audience & kid visibility) — the LLM already
+// judges 'family' vs 'parent_only' itself (see llm.js's system prompt;
+// defaults to 'family' whenever unclear, matching the kid dashboard's
+// safe-default choice not to under-show real family events). This is the
+// one deterministic override on top of that judgment (4.3's "nice-to-have"
+// manual escape hatch, minus any UI to build one — there's no
+// event-management screen in Phase 1 to put a toggle on): an explicit
+// phrase in the message itself always wins over the LLM's own read.
+const PARENT_ONLY_KEYWORDS = /\b(just us parents|just (me|us) parents?|parents? only|adults? only|not for the kids?|no kids)\b/i;
+export function overrideExplicitAudienceKeyword(rawInput, candidate) {
+  if (PARENT_ONLY_KEYWORDS.test(rawInput || '')) return { ...candidate, audience: 'parent_only' };
+  return candidate;
+}
+
+// The kid dashboard's one filtering rule: hide events explicitly marked
+// parent_only, show everything else (including events with no audience
+// metadata at all — e.g. sample/preview events, or anything written before
+// this field existed). Pure and pulled out specifically so it's testable
+// without the real Google Calendar API dashboard.js otherwise needs.
+export function shouldShowOnKidBoard(calendarEvent) {
+  return calendarEvent?.extendedProperties?.private?.audience !== 'parent_only';
+}

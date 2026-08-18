@@ -25,11 +25,16 @@ async function request(path, options = {}) {
 const json = (body) => JSON.stringify(body);
 
 // -- auth / session --------------------------------------------------------
-export function signInWithGoogleUrl() {
-  return '/auth/google';
+export function signInWithGoogleUrl(inviteCode) {
+  return inviteCode ? `/auth/google?invite=${encodeURIComponent(inviteCode)}` : '/auth/google';
 }
 export const getSession = () => request('/auth/session');
 export const logout = () => request('/auth/logout', { method: 'POST' });
+
+// -- multi-parent invites (backlog 1.3) ---------------------------------------
+export const getFamilyInvite = () => request('/api/family/invite');
+// Public — no session required, shown before the invited parent signs in.
+export const previewInvite = (code) => request(`/auth/invite/${encodeURIComponent(code)}`);
 
 // -- family -----------------------------------------------------------------
 export const getFamily = () => request('/api/family');

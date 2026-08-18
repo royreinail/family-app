@@ -8,6 +8,19 @@ export async function findByFamilyId(familyId, pool = getPool()) {
   return rows[0] ?? null;
 }
 
+// Backward-compat lookup for backlog 1.3: every family created before
+// family_parents existed still has exactly one google_credentials row (sign-in
+// and calendar-connect have always been the same OAuth action — see auth.js),
+// so this lets a returning founding parent be matched to their existing
+// family even before family_parents has been backfilled for them.
+export async function findByEmail(googleAccountEmail, pool = getPool()) {
+  const { rows } = await pool.query(
+    `select * from google_credentials where google_account_email = $1 and deleted_at is null order by created_at desc limit 1`,
+    [googleAccountEmail]
+  );
+  return rows[0] ?? null;
+}
+
 export async function upsert({ familyId, googleAccountEmail, accessToken, refreshToken, scope, expiryDate, calendarId = 'primary' }, pool = getPool()) {
   const existing = await findByFamilyId(familyId, pool);
   if (existing) {

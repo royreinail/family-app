@@ -14,8 +14,13 @@ const EXTRACTION_TOOL = {
       category: { type: ['string', 'null'] },
       reminder_requested: { type: 'boolean' },
       reminder_datetime: { type: ['string', 'null'], description: 'ISO 8601 datetime, when reminder_requested is true' },
+      audience: {
+        type: 'string',
+        enum: ['family', 'parent_only'],
+        description: "'family' unless the message is clearly only relevant to a parent (a personal appointment, work meeting, 'date night' with no child involved, first-person language about the sender alone). Default to 'family' whenever unclear.",
+      },
     },
-    required: ['title', 'date', 'time', 'person', 'category', 'reminder_requested', 'reminder_datetime'],
+    required: ['title', 'date', 'time', 'person', 'category', 'reminder_requested', 'reminder_datetime', 'audience'],
   },
 };
 
@@ -25,12 +30,16 @@ including Hebrew — extract fields in whatever language the source uses, don't 
 forwarded email. Do not decide what should happen with the message — only report what is literally
 present. If a field isn't stated, use null. Only set reminder_requested to true if the message
 explicitly asks to be reminded (e.g. "remind me to..."). Resolve relative dates ("Thursday",
-"tomorrow") against the provided reference date.`;
+"tomorrow") against the provided reference date. Set audience to 'parent_only' only when the message
+is clearly not relevant to show a child (a parent's own appointment, a work meeting, "date night"
+with no child involved); default to 'family' whenever it's unclear or the message concerns the
+household generally — the kid dashboard hides 'parent_only' events entirely, so treat 'family' as
+the safe default, not 'parent_only'.`;
 
 /**
  * @param {string} rawInput - message text, or a caption/empty string when `opts.image` is set
  * @param {{referenceDate?: string, model?: string, image?: {base64: string, mimeType: string}}} [opts]
- * @returns {Promise<{title:string|null,date:string|null,time:string|null,person:string|null,category:string|null,reminder_requested:boolean,reminder_datetime:string|null}>}
+ * @returns {Promise<{title:string|null,date:string|null,time:string|null,person:string|null,category:string|null,reminder_requested:boolean,reminder_datetime:string|null,audience:'family'|'parent_only'}>}
  */
 export async function extract(rawInput, opts = {}) {
   const apiKey = process.env.ANTHROPIC_API_KEY;

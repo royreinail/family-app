@@ -5,7 +5,7 @@ import PrimaryButton from '../../../components/PrimaryButton.jsx';
 import TomorrowBoard from '../../kid-dashboard/TomorrowBoard.jsx';
 import { getFamilyMembers } from '../../../api/client.js';
 
-export const STEP_INDEX = 6;
+export const STEP_INDEX = 7;
 
 // Sample activities so the parent sees the real payoff (their own colors,
 // icons, names) before anything has actually been captured yet — the

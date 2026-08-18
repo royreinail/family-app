@@ -21,7 +21,7 @@ function clientFor(credentials) {
 /**
  * @returns {Promise<{provider: 'google', external_id: string}>}
  */
-export async function createEvent(credentials, { title, startDateTime, endDateTime, timeZone, colorId, attendeeNames } = {}) {
+export async function createEvent(credentials, { title, startDateTime, endDateTime, timeZone, colorId, attendeeNames, audience } = {}) {
   const calendar = clientFor(credentials);
   const { data } = await calendar.events.insert({
     calendarId: credentials.calendar_id || 'primary',
@@ -34,6 +34,12 @@ export async function createEvent(credentials, { title, startDateTime, endDateTi
       start: { dateTime: startDateTime, timeZone },
       end: { dateTime: endDateTime, timeZone },
       colorId,
+      // Backlog 4.1 — kept out of the visible summary/description on
+      // purpose (extendedProperties.private is invisible in Calendar's own
+      // UI) so this is pure app metadata, read back by the kid dashboard's
+      // filter (classify.js's shouldShowOnKidBoard), not something a parent
+      // has to see or edit through Google Calendar itself.
+      extendedProperties: audience ? { private: { audience } } : undefined,
     },
   });
   return { provider: 'google', external_id: data.id };

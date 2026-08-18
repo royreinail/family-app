@@ -9,6 +9,7 @@ import * as familyMembersRepo from '../repositories/familyMembers.js';
 import * as activityIconsRepo from '../repositories/activityIcons.js';
 import * as googleCredentialsRepo from '../repositories/googleCredentials.js';
 import * as calendar from '../integrations/calendar.js';
+import { shouldShowOnKidBoard } from '../pipeline/classify.js';
 import { requireFamily } from './middleware.js';
 
 function startOfTomorrow(timezone) {
@@ -48,7 +49,10 @@ export function dashboardRouter() {
       return res.status(502).json({ connected: true, error: 'calendar_unavailable', members, events: [] });
     }
 
-    const events = items.map((item) => {
+    // Backlog 4.2 — parent_only events (see classify.js's
+    // shouldShowOnKidBoard) never reach the shared board at all, not just
+    // visually hidden client-side.
+    const events = items.filter(shouldShowOnKidBoard).map((item) => {
       const matchedMembers = matchMembersToEvent(item, members);
       const icon = activityIconsRepo.resolveIcon(icons, item.summary);
       return {

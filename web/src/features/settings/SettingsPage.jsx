@@ -7,6 +7,7 @@ import FamilyMembersStep from '../onboarding/steps/FamilyMembersStep.jsx';
 import TimezoneStep from '../onboarding/steps/TimezoneStep.jsx';
 import WhatsAppStep from '../onboarding/steps/WhatsAppStep.jsx';
 import PinStep from '../onboarding/steps/PinStep.jsx';
+import InviteCoParentStep from '../onboarding/steps/InviteCoParentStep.jsx';
 import CalendarSettings from './CalendarSettings.jsx';
 
 // Reached via the kid dashboard's settings gear. PIN-gated (or, if no PIN
@@ -56,6 +57,7 @@ export default function SettingsPage() {
     whatsapp: <WhatsAppStep editMode onDone={backToMenu} />,
     calendar: <CalendarSettings onDone={backToMenu} />,
     pin: <PinStep editMode onDone={backToMenu} />,
+    invite: <InviteCoParentStep editMode onDone={backToMenu} />,
   };
 
   if (view !== 'menu') {

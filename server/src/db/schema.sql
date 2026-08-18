@@ -16,6 +16,25 @@ create table if not exists families (
   created_at timestamptz not null default now(),
   deleted_at timestamptz
 );
+-- Backlog 1.3: lazily generated, lets a second parent join this family.
+-- ALTER ... ADD COLUMN IF NOT EXISTS (not a column in the create table
+-- above) so this applies to already-deployed databases the same idempotent
+-- way schema.sql's other statements do -- see db/migrate.js.
+alter table families add column if not exists invite_code text unique;
+
+-- Backlog 1.3 (multi-parent support): every Google account authorized to
+-- sign into a family. Kept separate from google_credentials, which stays a
+-- single shared Calendar connection regardless of how many parents there
+-- are -- a second parent joining doesn't need (or get) their own calendar
+-- link, they share the one the family already has.
+create table if not exists family_parents (
+  id uuid primary key default gen_random_uuid(),
+  family_id uuid not null references families(id),
+  google_account_email text not null unique,
+  created_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+create index if not exists family_parents_family_idx on family_parents (family_id) where deleted_at is null;
 
 -- Google OAuth credential state for a family's connected calendar account.
 -- Kept in its own table (not on families) so future-proofing item 5 (thin

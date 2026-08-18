@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as familiesRepo from '../repositories/families.js';
 import * as familyMembersRepo from '../repositories/familyMembers.js';
+import * as familyParentsRepo from '../repositories/familyParents.js';
 import { requireFamily, requirePinVerified } from './middleware.js';
 
 const PALETTE = ['#b3a3d9', '#e6ab84', '#a3bf9a', '#e2b6c4', '#8fc4c0', '#f0cf8e'];
@@ -46,6 +47,18 @@ export function familyRouter() {
   router.post('/family/pin/forgot', async (req, res) => {
     req.session.pinVerifiedAt = Date.now();
     res.json({ ok: true });
+  });
+
+  // Backlog 1.3 — "Invite a Co-Parent" (Settings + a late onboarding step).
+  // Mints the family's invite code on first request, same shareable code
+  // every time after. Not PIN-gated: this only reveals a join code to
+  // someone already signed into the family, same trust level as the other
+  // plain-GET settings endpoints (family-members, bot-config).
+  router.get('/family/invite', async (req, res) => {
+    const code = await familiesRepo.ensureInviteCode(req.familyId);
+    const parents = await familyParentsRepo.findAllForFamily(req.familyId);
+    const joinUrl = `${process.env.WEB_APP_URL || ''}/join/${code}`;
+    res.json({ code, joinUrl, parentCount: parents.length });
   });
 
   router.get('/family-members', async (req, res) => {

@@ -319,6 +319,20 @@ Kept up to date as the implementation proceeds — same reasoning as the bot cap
 
 **Fix: calendar selection (backlog 2.1).** `calendar_id` on `google_credentials` already existed and every write already respected it (`calendar.js`'s `createEvent`/`updateEvent`/`deleteEvent`/`listEvents` all use `credentials.calendar_id || 'primary'`) — the missing piece was purely a way for a family to see and change it. Added `calendar.listCalendars(credentials)` (Google's `calendarList.list`, filtered to `accessRole` of `owner`/`writer` since a write to a read-only shared calendar would just fail) and `googleCredentialsRepo.setCalendarId(familyId, calendarId)` (scoped to the calling family, mirroring the family-member authorization fix above). New Settings Home row ("Calendar") lists every calendar the connected Google account can write to, radio-select, PIN-gated save — same settings-editor pattern as Timezone/WhatsApp. Deliberately settings-only, no onboarding step: a freshly-connected account only has its own calendars to pick from at that point anyway, so there's nothing meaningful to choose until later. Verified via the dev preview: not-yet-connected state, and — since the preview's fake OAuth tokens can't reach the real Google API — the "connected but couldn't load" fallback state, which caught a real bug in `CalendarSettings.jsx` before it shipped: the shared `api/client.js` `request()` helper throws on any non-2xx response (including this route's deliberate `502 calendar_unavailable`), so the first version of the `.catch` mislabeled "connected, API call failed" as "not connected" — fixed by having the catch branch assume `connected: true` (a clean "not connected" only ever arrives as a normal 200, never a thrown error). The success path (listing and picking from a family's *real* calendars) still needs live verification with an actual Google account — ask Roy to confirm on the next visit to Settings → Calendar.
 
+**Fix: multi-parent / shared family support (backlog 1.3).** Design confirmed with Roy before building (per his own note that this needed deliberate thought, not a reactive patch): equal permissions for both parents (no admin/elevated role), invite delivered as a code + link via the OS share sheet (no in-app email sending), reachable from both onboarding and Settings.
+
+Data model: a new `family_parents` table (`family_id`, `google_account_email`) tracks every Google account authorized to sign into a family — kept separate from `google_credentials`, which stays a single shared Calendar connection regardless of parent count, since a second parent joining shares the existing connection rather than getting their own. `families.invite_code` (unique, lazily generated via `familiesRepo.ensureInviteCode`) backs the join link (`/join/:code`).
+
+The actual bug-prone part — deciding which family a signing-in Google account belongs to — was split out of `routes/auth.js` into `services/parentSignIn.js`'s `resolveFamilyForSignIn`, specifically so it has real unit-test coverage without mocking Google's OAuth API (auth.js's callback still can't be tested directly for the same reason `calendar.js`'s real API calls never have been). Checked in order: (1) an active session already mid-flow (e.g. `ConnectCalendarStep` re-running the same OAuth button) keeps its own family; (2) a returning parent matches by email against `family_parents`, falling back to `google_credentials` for accounts that signed up before `family_parents` existed — this fallback also backfills the real row, so it only ever triggers once per pre-existing account; (3) a new account with a valid invite code joins that family; otherwise a new family is created, unchanged from before. Caught in design, not after: without the (2) fallback, this feature would have silently broken every existing single-parent user the first time their session cookie expired — a fresh sign-in with no `family_parents` history and no invite code would have created a *second*, empty family for them. Also guarded: a second parent's OAuth callback no longer overwrites `google_credentials` with their own tokens (only writes when there's no existing connection, or the same account is refreshing its own tokens) — without this, whichever parent signed in most recently would silently become "the" calendar account.
+
+Also fixed in the same pass: `PinStep` (onboarding) would silently overwrite an already-set family PIN if a second parent walked through the same onboarding sequence and set their own — the family has one shared PIN, not one per parent. Now shows a plain "PIN already set" confirmation instead of a fresh pad when `session.family.pinSet` is already true and it isn't the dedicated Settings "change PIN" flow.
+
+New: `InviteCoParentStep` (reused in onboarding — 8th step now, after PIN — and Settings → "Invite a Co-Parent"), `JoinFamilyPage` (`/join/:code`, public preview of the family name before sign-in), and a "Have an invite code?" entry point on `SignInStep` for someone handed a bare code rather than a link. Regression tests (`tests/regression/multiParent.test.js`) cover every branch of `resolveFamilyForSignIn`, invite code minting/lookup, and the calendar-credential-preservation guard. Full suite: 38/38 passing. The real end-to-end join (two actual different Google accounts) can't be exercised in the dev preview — same class of limitation as backlog 2.1's calendar list — so this needs live verification with a second real account.
+
+**Fix: event audience & kid visibility (backlog 4.1-4.3).** Scope ended up narrower than the original backlog note once the kid dashboard's actual current shape was accounted for: it's one shared board today, not per-kid views (clickable-kid-icon filtering is its own separate, not-yet-built, "needs its own design pass" item elsewhere in this doc) — so there's nowhere yet to point a kid-specific audience, and "audience" for now can only mean a binary hide-from-the-board vs. show.
+
+Extraction schema (`llm.js`) gained one field: `audience: 'family' | 'parent_only'`, decided by the LLM itself (system prompt explicitly defaults to `'family'` whenever unclear — chosen over defaulting to `'parent_only'` so the board doesn't go quiet from ordinary ambiguous family events, confirmed with Roy). One deterministic override on top (`classify.js`'s `overrideExplicitAudienceKeyword`, applied in the pipeline the same way `overrideObviousRelativeDate` is): an explicit phrase like "just us parents" or "parents only" always wins over the LLM's own read — this is 4.3's "nice-to-have manual override," reshaped as a keyword catch rather than a UI toggle since there's no event-management screen in Phase 1 to put one on. Persisted via Google Calendar's `extendedProperties.private.audience` on the write (`calendar.js`'s `createEvent`) — invisible in Calendar's own UI, keeps this pure app metadata rather than cluttering the visible event. `GET /dashboard/tomorrow` filters using the pure `shouldShowOnKidBoard` helper before returning events; an event with no audience metadata at all (old writes, sample/preview events) defaults to shown, never hidden. Regression tests (`tests/regression/eventAudience.test.js`) cover the keyword override, the filter, and both real-write paths (default-to-family, and keyword-forced parent_only overriding what the LLM guessed). Full suite: 38/38 passing.
+
 **Known gap: reminder sends need a WhatsApp message template, not freeform text.** `messenger.send()` (`server/src/integrations/messenger.js`) always sends `type: "text"`, which only works inside the 24-hour customer-service window a user opens by messaging the bot. The bot capture→reply path is always inside that window (reply fires immediately), so it's unaffected. Reminder-on-request is not: `reminder_datetime` is very often hours or days after the triggering message, i.e. outside the window by the time `sweepDueReminders` fires it, which WhatsApp's policy classifies as a business-initiated message requiring a pre-approved message template. Fixing this means creating a template (e.g. "Reminder: {{1}}"), submitting it for Meta review, and branching `messenger.send` to use the `template` message type for reminder sends specifically. Not fixed yet — flagging so a reminder silently/loudly failing outside the window isn't mistaken for a pipeline bug.
 
 ---
@@ -334,14 +348,11 @@ notes are Roy's own from the handoff, kept verbatim where useful. Status updated
   post-launch triage) — icon+color already covers member identification for Phase 1; not worth the
   storage/upload-endpoint work until the rest of this backlog lands.
 - Edit/remove an existing family member, from both onboarding and Settings → Family Members. — ✅ fixed
-- **Multi-parent / shared family support** — no linking mechanism today; two parents onboarding
-  independently get two isolated families (separate calendar, separate WhatsApp connection, separate
-  kid profiles). Needed: first parent creates the family and gets an invite link/code; second parent
-  joins the *same* family (shared calendar, shared kid profiles, both WhatsApp numbers routed to one
-  bot instance). Roy flagged this explicitly as **data-model-level, needing deliberate design, not a
-  reactive patch** — matches this doc's own Phase 2 backlog item "data model support for two
-  independently-permissioned parent identities" and Phase 3's "full co-parenting UX." Treat as one
-  design pass before implementation, not folded into a quick-fix batch.
+- **Multi-parent / shared family support — ✅ fixed.** First parent creates the family and can generate
+  an invite code/link (Settings → Invite a Co-Parent, and a late onboarding step); second parent joins
+  the *same* family (shared calendar, shared kid profiles/WhatsApp allowlist, equal permissions — see
+  "Fix: multi-parent / shared family support (backlog 1.3)" in the build log below for the full design
+  and the real bugs caught while building it.
 
 **Calendar configuration — ✅ fixed**
 - No way to choose which Google Calendar events get written to — currently defaults to whichever
@@ -356,7 +367,7 @@ notes are Roy's own from the handoff, kept verbatim where useful. Status updated
   treatment as the dashboard's settings gear); wired into Settings Home, the PIN gate, and every settings
   sub-page. Onboarding's own use of `PhoneFrame` deliberately has no `onBack` — nothing to return to mid-signup.
 
-**Event audience & kid visibility**
+**Event audience & kid visibility — ✅ fixed**
 - Events have no audience concept — nothing distinguishes "for a parent" from "for a specific kid."
   Needed: extraction/assessment tier should identify intended audience; when ambiguous or missing, the
   bot should ask a clarifying follow-up rather than guess or silently default.
@@ -364,9 +375,9 @@ notes are Roy's own from the handoff, kept verbatim where useful. Status updated
   kids by default; only events explicitly aimed at (or including) a kid show on that kid's dashboard.
 - *(Nice-to-have, not blocking)* per-event manual show/hide-from-kids override, as an escape hatch on
   top of the automatic audience default.
-- This is a real schema + LLM-schema + rule-engine change (new field on the extraction schema, a new
-  assessment-tier concern, dashboard filter logic) — worth a short design pass rather than a quick patch,
-  same spirit as the multi-parent item above, just smaller in scope.
+- Fixed: see "Fix: event audience & kid visibility (backlog 4.1-4.3)" in the build log below — scope
+  ended up narrower than originally written above once the kid dashboard's actual current shape (one
+  shared board, not per-kid views) was accounted for; see that entry for why.
 
 **Date parsing bug — high priority, silent correctness bug — ✅ fixed**
 - "Tomorrow" (and likely other relative dates) resolved to the wrong calendar date in real testing —

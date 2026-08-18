@@ -8,12 +8,13 @@ import FamilyMembersStep from './steps/FamilyMembersStep.jsx';
 import TimezoneStep from './steps/TimezoneStep.jsx';
 import WhatsAppStep from './steps/WhatsAppStep.jsx';
 import PinStep from './steps/PinStep.jsx';
+import InviteCoParentStep from './steps/InviteCoParentStep.jsx';
 import PreviewStep from './steps/PreviewStep.jsx';
 
-// The 7-step sequential onboarding flow. Each step is its own reusable
+// The 8-step sequential onboarding flow. Each step is its own reusable
 // component (steps/*.jsx) — the same components later run individually in
 // Settings Home edit mode, not a second build.
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 8;
 
 export default function OnboardingFlow() {
   const { session, loading, refresh } = useFamily();
@@ -39,7 +40,8 @@ export default function OnboardingFlow() {
     <FamilyMembersStep totalSteps={TOTAL_STEPS} onNext={next} />,
     <TimezoneStep totalSteps={TOTAL_STEPS} onNext={next} initialTimezone={session?.family?.timezone} />,
     <WhatsAppStep totalSteps={TOTAL_STEPS} onNext={next} />,
-    <PinStep totalSteps={TOTAL_STEPS} onNext={next} />,
+    <PinStep totalSteps={TOTAL_STEPS} onNext={next} alreadySet={!!session?.family?.pinSet} />,
+    <InviteCoParentStep totalSteps={TOTAL_STEPS} onNext={next} />,
     <PreviewStep
       totalSteps={TOTAL_STEPS}
       onFinish={async () => {

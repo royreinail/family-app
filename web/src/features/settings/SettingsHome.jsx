@@ -9,6 +9,7 @@ const ROWS = [
   { key: 'whatsapp', label: 'WhatsApp Connection', icon: 'chat', tint: color.accentWhatsappTint, fg: color.accentWhatsapp },
   { key: 'calendar', label: 'Calendar', icon: 'event_available', tint: color.accentCalendarTint, fg: color.accentCalendar },
   { key: 'pin', label: 'PIN & Security', icon: 'password', tint: color.accentSettingsTint, fg: color.accentSettings },
+  { key: 'invite', label: 'Invite a Co-Parent', icon: 'group_add', tint: color.accentSettingsTint, fg: color.accentSettings },
 ];
 
 // The Settings Home menu — a menu, not a form. Tapping a row jumps directly

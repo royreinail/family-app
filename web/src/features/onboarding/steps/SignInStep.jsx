@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { color, ink, weight } from '../../../theme/tokens.js';
 import ProgressDots from '../../../components/ProgressDots.jsx';
 import { signInWithGoogleUrl } from '../../../api/client.js';
@@ -12,6 +14,45 @@ async function devFakeSignIn(refresh, onNext) {
   await fetch('/dev/fake-signin', { method: 'POST', credentials: 'include' });
   await refresh();
   onNext();
+}
+
+// Backlog 1.3 — for someone who was handed a bare invite code (not a
+// clickable link) rather than typing/pasting it into a Google-flavored
+// button. Routes to the same /join/:code landing page a link would, rather
+// than duplicating the sign-in-with-code logic here.
+function HaveInviteCode() {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState('');
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', font: `${weight.bold} 13.5px/1 Nunito, sans-serif`, color: ink(0.35) }}>
+        Have an invite code?
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+      <input
+        value={code}
+        onChange={(e) => setCode(e.target.value.toUpperCase())}
+        placeholder="Invite code"
+        style={{ flex: 1, font: `${weight.bold} 15px/1.3 Nunito, sans-serif`, padding: '10px 14px', borderRadius: 14, border: `1px solid ${ink(0.15)}`, letterSpacing: '.08em', textAlign: 'center' }}
+      />
+      <button
+        onClick={() => code.trim() && navigate(`/join/${code.trim()}`)}
+        disabled={!code.trim()}
+        style={{
+          padding: '0 18px', borderRadius: 14, border: 'none', cursor: code.trim() ? 'pointer' : 'not-allowed',
+          background: code.trim() ? color.accentSettings : ink(0.12), color: '#fff', font: `${weight.bold} 14px/1 Nunito, sans-serif`,
+        }}
+      >
+        Go
+      </button>
+    </div>
+  );
 }
 
 export default function SignInStep({ totalSteps, onNext }) {
@@ -59,6 +100,7 @@ export default function SignInStep({ totalSteps, onNext }) {
         <div style={{ font: `${weight.semibold} 13.5px/1.5 Nunito, sans-serif`, color: ink(0.38), textAlign: 'center', maxWidth: 290 }}>
           We only read your calendar. Nothing is ever posted or shared.
         </div>
+        <HaveInviteCode />
         {import.meta.env.DEV && (
           <button
             onClick={() => devFakeSignIn(refresh, onNext)}

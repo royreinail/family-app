@@ -20,6 +20,7 @@ import {
   addOneHour,
   todayInTimeZone,
   overrideObviousRelativeDate,
+  overrideExplicitAudienceKeyword,
   resolveEventColorId,
 } from './classify.js';
 import { scheduleReminder } from './reminders.js';
@@ -102,6 +103,10 @@ export async function handleIncomingMessage(message, deps) {
   // Applies (and can fill in a date the LLM missed) whenever the raw text
   // says one of those words, independent of what the LLM itself returned.
   candidate = overrideObviousRelativeDate(text, candidate, todayInTimeZone(timeZone));
+  // Backlog 4.3 — an explicit "just us parents"-style phrase always wins
+  // over the LLM's own audience read; see classify.js for why there's no
+  // opposite override (default is already 'family').
+  candidate = overrideExplicitAudienceKeyword(text, candidate);
   await extractionLogRepo.updateState(log.id, { state: 'extracted', aiCandidate: candidate }, pool);
 
   // 5. Assessment rules — act on the LLM's structured output.
@@ -121,6 +126,10 @@ export async function handleIncomingMessage(message, deps) {
       endDateTime: `${end.date}T${end.time}:00`,
       timeZone,
       colorId,
+      // Fixtures/candidates from before this field existed have no
+      // audience at all — default to 'family' (visible), never silently
+      // hide an event because the field happens to be missing.
+      audience: candidate.audience || 'family',
     });
     await extractionLogRepo.updateState(
       log.id,
