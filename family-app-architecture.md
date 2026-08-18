@@ -314,3 +314,60 @@ Kept up to date as the implementation proceeds — same reasoning as the bot cap
 **One more real bug found and fixed the same session, after the three above:** Google Calendar's API rejects a bare `dateTime` (no UTC offset) unless a `timeZone` field travels with it — `calendar.js`'s `createEvent` never sent one. Fixed by threading the family's stored `timezone` from `webhook.js` through the pipeline into every calendar write (create, and the reply-correction update path); also gave every write a 1-hour default duration instead of `start === end`. **Confirmed working end-to-end in production after this fix:** a real WhatsApp message ("dance class Thursday 4pm") produced a real Calendar event and a real WhatsApp confirmation reply — `outcome=written rule=extraction_classification:date_time` in the server logs.
 
 **Known gap: reminder sends need a WhatsApp message template, not freeform text.** `messenger.send()` (`server/src/integrations/messenger.js`) always sends `type: "text"`, which only works inside the 24-hour customer-service window a user opens by messaging the bot. The bot capture→reply path is always inside that window (reply fires immediately), so it's unaffected. Reminder-on-request is not: `reminder_datetime` is very often hours or days after the triggering message, i.e. outside the window by the time `sweepDueReminders` fires it, which WhatsApp's policy classifies as a business-initiated message requiring a pre-approved message template. Fixing this means creating a template (e.g. "Reminder: {{1}}"), submitting it for Meta review, and branching `messenger.send` to use the `template` message type for reminder sends specifically. Not fixed yet — flagging so a reminder silently/loudly failing outside the window isn't mistaken for a pipeline bug.
+
+---
+
+## Post-launch fix/feature backlog (Session 1 live testing)
+Found by Roy testing the live Phase 1 build (Aug 2026). From this point, Claude Code owns this doc and
+its implementation directly — no separate planning-chat handoff. Grouped by area; priority/dependency
+notes are Roy's own from the handoff, kept verbatim where useful. Status updated in place as items land.
+
+**Onboarding & family member management**
+- Photo upload per family member during onboarding (currently no upload path — mocks show an "Add
+  photo" affordance but there's no backend for it yet).
+- Edit/remove an existing family member, from both onboarding and Settings → Family Members.
+- **Multi-parent / shared family support** — no linking mechanism today; two parents onboarding
+  independently get two isolated families (separate calendar, separate WhatsApp connection, separate
+  kid profiles). Needed: first parent creates the family and gets an invite link/code; second parent
+  joins the *same* family (shared calendar, shared kid profiles, both WhatsApp numbers routed to one
+  bot instance). Roy flagged this explicitly as **data-model-level, needing deliberate design, not a
+  reactive patch** — matches this doc's own Phase 2 backlog item "data model support for two
+  independently-permissioned parent identities" and Phase 3's "full co-parenting UX." Treat as one
+  design pass before implementation, not folded into a quick-fix batch.
+
+**Calendar configuration**
+- No way to choose which Google Calendar events get written to — currently defaults to whichever
+  calendar `google_credentials.calendar_id` was set to at OAuth time (effectively the signed-in parent's
+  primary calendar). Needed: let a family designate a target calendar (e.g. a shared family calendar
+  distinct from either parent's personal one).
+
+**Settings navigation**
+- No back button from Settings Home to the kid dashboard, and none from a settings sub-page back to the
+  Settings Home menu.
+
+**Event audience & kid visibility**
+- Events have no audience concept — nothing distinguishes "for a parent" from "for a specific kid."
+  Needed: extraction/assessment tier should identify intended audience; when ambiguous or missing, the
+  bot should ask a clarifying follow-up rather than guess or silently default.
+- Kid dashboard should filter by that audience field once it exists — parent-only events hidden from
+  kids by default; only events explicitly aimed at (or including) a kid show on that kid's dashboard.
+- *(Nice-to-have, not blocking)* per-event manual show/hide-from-kids override, as an escape hatch on
+  top of the automatic audience default.
+- This is a real schema + LLM-schema + rule-engine change (new field on the extraction schema, a new
+  assessment-tier concern, dashboard filter logic) — worth a short design pass rather than a quick patch,
+  same spirit as the multi-parent item above, just smaller in scope.
+
+**Date parsing bug — high priority, silent correctness bug**
+- "Tomorrow" (and likely other relative dates) resolved to the wrong calendar date in real testing —
+  observed one day later than intended. No visible error; this is the dangerous kind of bug (wrong data,
+  not a crash). Fix in progress this session — see build log below once resolved.
+
+**Reminders — multi-parent routing** *(depends on multi-parent support above)*
+- Once multiple parents can be connected to one family, a reminder must go to whichever parent
+  created/requested it, not broadcast to every connected number and not silently default to the wrong
+  (or no) recipient. Blocked on the multi-parent data model existing first.
+
+**Multi-language support — explicitly deferred, not immediate**
+- Hebrew support for both LLM extraction/reply generation and the client UI, noted now so future
+  decisions don't paint the app into a corner. Right-to-left layout is explicitly out of scope for now
+  (a larger overhaul) — noted, not to be built yet.
