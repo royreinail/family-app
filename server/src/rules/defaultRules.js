@@ -26,7 +26,20 @@ export function defaultRuleDefinitions(familyId) {
     },
 
     // ---- assessment tier (post-extraction) ----
-    // extraction_classification: field-presence tiering, four branches by priority.
+    // extraction_classification: field-presence tiering, branches by priority.
+    // pure_reminder runs first (lower priority number = higher precedence):
+    // "remind me to do the laundry at 22:30 today" has date+time too, but
+    // it's the reminder itself, not a separate calendar-worthy event — see
+    // isReminderOnlyMessage in classify.js for the exact distinguishing signal.
+    {
+      familyId,
+      ruleType: 'assessment',
+      triggerType: 'extraction_classification',
+      name: 'extraction_classification:pure_reminder',
+      priority: 5,
+      conditions: { all: [{ fact: 'isPureReminder', operator: 'equal', value: true }] },
+      action: { type: 'write_task_reminder', reply: 'reminder_confirm' },
+    },
     {
       familyId,
       ruleType: 'assessment',

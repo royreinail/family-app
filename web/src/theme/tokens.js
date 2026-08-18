@@ -46,13 +46,27 @@ export function ink(alpha) {
   return `rgba(${color.inkRgb},${alpha})`;
 }
 
+// The assignable family-member color picker — deliberately Google
+// Calendar's own 11 event colors (colorId 1-11, same order), not a
+// standalone palette that merely looks similar. This is what makes "the
+// kid dashboard card is purple" and "the Calendar event is purple" the
+// same claim rather than a coincidence — see server/src/integrations/
+// googleColors.js, which must stay in sync with this list value-for-value.
+// (color.personPurple/personApricot/personSage above are unrelated —
+// those are the app's own generic UI accent tokens for buttons/icons/
+// progress dots, not tied to any family member's identity.)
 export const personPalette = [
-  color.personPurple,
-  color.personApricot,
-  color.personSage,
-  color.personPink,
-  color.personTeal,
-  color.personGold,
+  '#7986cb', // Lavender
+  '#33b679', // Sage
+  '#8e24aa', // Grape
+  '#e67c73', // Flamingo
+  '#f6c026', // Banana
+  '#f5511d', // Tangerine
+  '#039be5', // Peacock
+  '#616161', // Graphite
+  '#3f51b5', // Blueberry
+  '#0b8043', // Basil
+  '#d60000', // Tomato
 ];
 
 export const kidIconChoices = ['🦄', '🚀', '⚽', '🐢', '🌸', '🐳', '🎨', '🦋'];

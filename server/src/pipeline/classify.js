@@ -3,13 +3,41 @@
 // the actual branching logic (data, not code); this module just turns a
 // candidate into the facts those rules evaluate, and turns a matched action
 // into human copy / calendar payloads.
+import { hexToColorId, DEFAULT_COLOR_ID } from '../integrations/googleColors.js';
+
+// Matches the extracted `person` string against real family members so the
+// Calendar event can carry that person's actual assigned color. Anything
+// short of exactly one confident match — nobody named, several people
+// named, no match at all — deliberately falls back to one default color
+// rather than guessing which person was meant.
+export function resolveEventColorId(personName, familyMembers) {
+  if (!personName || !familyMembers?.length) return DEFAULT_COLOR_ID;
+  const needle = personName.toLowerCase();
+  const matches = familyMembers.filter((m) => needle.includes(m.name.toLowerCase()));
+  if (matches.length !== 1) return DEFAULT_COLOR_ID;
+  return hexToColorId(matches[0].calendar_color);
+}
 
 export function factsFromCandidate(candidate) {
   const hasDate = candidate.date != null && candidate.date !== '';
   const hasTime = candidate.time != null && candidate.time !== '';
   const contentFields = ['title', 'date', 'time', 'person', 'category'];
   const hasAnyField = contentFields.some((f) => candidate[f] != null && candidate[f] !== '');
-  return { hasDate, hasTime, hasAnyField };
+  return { hasDate, hasTime, hasAnyField, isPureReminder: isReminderOnlyMessage(candidate) };
+}
+
+// True when the whole message IS the reminder — the extracted date/time
+// exactly match reminder_datetime, meaning there's no separate
+// calendar-worthy event distinct from "remind me at this moment" (e.g.
+// "remind me to do the laundry at 22:30 today"). False when a real event
+// exists at its own date/time and the reminder is for something unrelated
+// (e.g. "remind me to pack the gym bag Thursday night, gym class is Friday
+// 9am" — acceptance fixture 7's shape), in which case the event still
+// belongs on the calendar and the reminder is scheduled independently.
+function isReminderOnlyMessage(candidate) {
+  if (!candidate.reminder_requested || !candidate.reminder_datetime) return false;
+  if (!candidate.date || !candidate.time) return false;
+  return candidate.reminder_datetime.startsWith(`${candidate.date}T${candidate.time}`);
 }
 
 export function formatDateTime(date, time) {
@@ -31,6 +59,11 @@ export function qualifyReply(candidate) {
 
 export function clarifyReply() {
   return "I couldn't find a date in that — what day is it for?";
+}
+
+export function reminderConfirmReply(candidate) {
+  const title = candidate.title || 'that';
+  return `Got it — I'll remind you: ${title} at ${candidate.time} ✅`;
 }
 
 // Extraction only ever gives a start time, but a zero-duration calendar

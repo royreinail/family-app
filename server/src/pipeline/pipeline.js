@@ -11,7 +11,17 @@ import * as tasksRepo from '../repositories/tasks.js';
 import * as botConfigRepo from '../repositories/botConfig.js';
 import { evaluateRules } from '../rules/engine.js';
 import { matchCommand, helpReply, formatTaskList, parseCorrectedTime } from './commands.js';
-import { factsFromCandidate, confirmReply, qualifyReply, clarifyReply, addOneHour, todayInTimeZone, overrideObviousRelativeDate } from './classify.js';
+import {
+  factsFromCandidate,
+  confirmReply,
+  qualifyReply,
+  clarifyReply,
+  reminderConfirmReply,
+  addOneHour,
+  todayInTimeZone,
+  overrideObviousRelativeDate,
+  resolveEventColorId,
+} from './classify.js';
 import { scheduleReminder } from './reminders.js';
 
 async function withRetry(fn, { attempts = 3, baseDelayMs = 200 } = {}) {
@@ -44,7 +54,7 @@ async function withRetry(fn, { attempts = 3, baseDelayMs = 200 } = {}) {
  */
 export async function handleIncomingMessage(message, deps) {
   const { familyId, externalMessageId, senderIdentifier, text, replyToExtractionLogId } = message;
-  const { pool, llmExtract, calendar, messenger, timeZone = 'UTC' } = deps;
+  const { pool, llmExtract, calendar, messenger, timeZone = 'UTC', familyMembers = [] } = deps;
 
   // 1. Write-ahead log — the instant the "webhook fires", before anything else.
   const log = await extractionLogRepo.create(
@@ -104,11 +114,13 @@ export async function handleIncomingMessage(message, deps) {
   if (action.type === 'write_calendar') {
     const routing = await evaluateRules('assessment', 'event_task_routing', facts, { familyId, pool });
     const end = addOneHour(candidate.date, candidate.time);
+    const colorId = resolveEventColorId(candidate.person, familyMembers);
     const eventRef = await calendar.createEvent({
       title: candidate.title || 'Untitled event',
       startDateTime: `${candidate.date}T${candidate.time}:00`,
       endDateTime: `${end.date}T${end.time}:00`,
       timeZone,
+      colorId,
     });
     await extractionLogRepo.updateState(
       log.id,
@@ -118,6 +130,30 @@ export async function handleIncomingMessage(message, deps) {
     const reply = confirmReply(candidate);
     await messenger.send(senderIdentifier, reply);
     result = { outcome: 'written', destination: 'calendar', eventRef, reply, rule: classification.rule, routingRule: routing.rule, log };
+  } else if (action.type === 'write_task_reminder') {
+    // The whole message IS the reminder (see isReminderOnlyMessage) — one
+    // task row carries both the to-do and its own reminder, no separate
+    // calendar write and no separate reminder-carrier task.
+    const task = await tasksRepo.create(
+      {
+        familyId,
+        title: candidate.title || 'Reminder',
+        dueDate: candidate.date,
+        reminderPolicy: 'requested',
+        reminderDatetime: candidate.reminder_datetime,
+        sourceExtractionLogId: log.id,
+      },
+      pool
+    );
+    const eventRef = { provider: 'tasks', external_id: task.id };
+    await extractionLogRepo.updateState(
+      log.id,
+      { state: 'written', resultingEventRef: eventRef, firedRule: firedRuleName },
+      pool
+    );
+    const reply = reminderConfirmReply(candidate);
+    await messenger.send(senderIdentifier, reply);
+    result = { outcome: 'written', destination: 'tasks', task, reply, rule: classification.rule, log };
   } else if (action.type === 'write_task_tentative') {
     const task = await tasksRepo.create(
       { familyId, title: candidate.title || 'Untitled task', dueDate: candidate.date, sourceExtractionLogId: log.id },
@@ -143,8 +179,11 @@ export async function handleIncomingMessage(message, deps) {
     result = { outcome: 'stopped', rule: classification.rule, log };
   }
 
-  // Reminder-on-request — orthogonal to the write destination above.
-  if (candidate.reminder_requested && candidate.reminder_datetime) {
+  // Reminder-on-request — orthogonal to the write destination above, EXCEPT
+  // for write_task_reminder, which already carries the reminder directly on
+  // the task it just created (a second scheduleReminder call here would
+  // create a duplicate reminder-carrier task for the same request).
+  if (action.type !== 'write_task_reminder' && candidate.reminder_requested && candidate.reminder_datetime) {
     result.reminder = await scheduleReminder(
       { familyId, title: candidate.title, reminderDatetime: candidate.reminder_datetime, sourceExtractionLogId: log.id },
       pool

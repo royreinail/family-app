@@ -6,6 +6,7 @@ import { Router } from 'express';
 import * as botConfigRepo from '../repositories/botConfig.js';
 import * as googleCredentialsRepo from '../repositories/googleCredentials.js';
 import * as familiesRepo from '../repositories/families.js';
+import * as familyMembersRepo from '../repositories/familyMembers.js';
 import * as extractionLogRepo from '../repositories/extractionLog.js';
 import { handleIncomingMessage } from '../pipeline/pipeline.js';
 import { todayInTimeZone } from '../pipeline/classify.js';
@@ -45,9 +46,21 @@ export function webhookRouter() {
         return;
       }
 
-      const text = message.text?.body || message.button?.text || '';
+      let text = message.text?.body || message.button?.text || '';
       const senderIdentifier = message.from;
       const replyContextId = message.context?.id ?? null;
+
+      // Forwarded photos (flyers, schedules) are a Phase 1 intake channel —
+      // WhatsApp sends the image as a media ID, not inline bytes.
+      let image = null;
+      if (message.type === 'image' && message.image?.id) {
+        try {
+          image = await messengerIntegration.downloadMedia(message.image.id);
+          text = message.image.caption || text;
+        } catch (err) {
+          console.error('Failed to download WhatsApp image media', err);
+        }
+      }
 
       let replyToExtractionLogId = null;
       if (replyContextId) {
@@ -60,9 +73,10 @@ export function webhookRouter() {
 
       const credentials = await googleCredentialsRepo.findByFamilyId(botConfig.family_id);
       const family = await familiesRepo.findById(botConfig.family_id);
+      const familyMembers = await familyMembersRepo.findAllForFamily(botConfig.family_id);
       const timeZone = family?.timezone || 'UTC';
       console.log(
-        `Webhook: family=${botConfig.family_id} sender=${senderIdentifier} text=${JSON.stringify(text)} hasCalendarCreds=${!!credentials}`
+        `Webhook: family=${botConfig.family_id} sender=${senderIdentifier} text=${JSON.stringify(text)} hasImage=${!!image} hasCalendarCreds=${!!credentials}`
       );
 
       const result = await handleIncomingMessage(
@@ -74,7 +88,7 @@ export function webhookRouter() {
           replyToExtractionLogId,
         },
         {
-          llmExtract: (raw) => llmIntegration.extract(raw, { referenceDate: todayInTimeZone(timeZone) }),
+          llmExtract: (raw) => llmIntegration.extract(raw, { referenceDate: todayInTimeZone(timeZone), image }),
           calendar: {
             createEvent: (evt) => calendarIntegration.createEvent(credentials, evt),
             updateEvent: (id, patch) => calendarIntegration.updateEvent(credentials, id, patch),
@@ -82,6 +96,7 @@ export function webhookRouter() {
           },
           messenger: { send: (to, msg) => messengerIntegration.send(to, msg) },
           timeZone,
+          familyMembers,
         }
       );
       console.log(

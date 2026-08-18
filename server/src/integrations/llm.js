@@ -19,15 +19,17 @@ const EXTRACTION_TOOL = {
   },
 };
 
-const SYSTEM_PROMPT = `You extract plain factual fields from a short family message (a forwarded
-WhatsApp text, flyer photo caption, or forwarded email). Do not decide what should happen with the
-message — only report what is literally present. If a field isn't stated, use null. Only set
-reminder_requested to true if the message explicitly asks to be reminded (e.g. "remind me to...").
-Resolve relative dates ("Thursday", "tomorrow") against the provided reference date.`;
+const SYSTEM_PROMPT = `You extract plain factual fields from a short family message — forwarded
+WhatsApp text, a photographed flyer/schedule (read the image directly; it may be in any language,
+including Hebrew — extract fields in whatever language the source uses, don't translate), or a
+forwarded email. Do not decide what should happen with the message — only report what is literally
+present. If a field isn't stated, use null. Only set reminder_requested to true if the message
+explicitly asks to be reminded (e.g. "remind me to..."). Resolve relative dates ("Thursday",
+"tomorrow") against the provided reference date.`;
 
 /**
- * @param {string} rawInput
- * @param {{referenceDate?: string, model?: string}} [opts]
+ * @param {string} rawInput - message text, or a caption/empty string when `opts.image` is set
+ * @param {{referenceDate?: string, model?: string, image?: {base64: string, mimeType: string}}} [opts]
  * @returns {Promise<{title:string|null,date:string|null,time:string|null,person:string|null,category:string|null,reminder_requested:boolean,reminder_datetime:string|null}>}
  */
 export async function extract(rawInput, opts = {}) {
@@ -37,6 +39,14 @@ export async function extract(rawInput, opts = {}) {
   }
   const model = opts.model || process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
   const referenceDate = opts.referenceDate || new Date().toISOString().slice(0, 10);
+
+  const textBlock = {
+    type: 'text',
+    text: `Reference date: ${referenceDate}\n\nMessage:\n${rawInput || '(no text — read the attached photo for the event/task details)'}`,
+  };
+  const content = opts.image
+    ? [{ type: 'image', source: { type: 'base64', media_type: opts.image.mimeType, data: opts.image.base64 } }, textBlock]
+    : textBlock.text;
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -49,9 +59,7 @@ export async function extract(rawInput, opts = {}) {
       model,
       max_tokens: 512,
       system: SYSTEM_PROMPT,
-      messages: [
-        { role: 'user', content: `Reference date: ${referenceDate}\n\nMessage:\n${rawInput}` },
-      ],
+      messages: [{ role: 'user', content }],
       tools: [EXTRACTION_TOOL],
       tool_choice: { type: 'tool', name: 'record_extraction' },
     }),
