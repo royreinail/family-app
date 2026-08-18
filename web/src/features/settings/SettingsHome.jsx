@@ -22,7 +22,7 @@ export default function SettingsHome({ onSelect }) {
   }
 
   return (
-    <PhoneFrame padding="64px 22px 40px">
+    <PhoneFrame padding="64px 22px 40px" onBack={() => navigate('/dashboard')}>
       <div style={{ padding: '0 6px 26px' }}>
         <div style={{ font: `${weight.heavy} 30px/1.2 Nunito, sans-serif`, color: color.ink, letterSpacing: '-.4px' }}>Settings</div>
         <div style={{ font: `${weight.semibold} 16px/1.4 Nunito, sans-serif`, color: ink(0.48), marginTop: 4 }}>Manage the family board</div>

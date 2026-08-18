@@ -57,7 +57,7 @@ export default function SettingsPage() {
   };
 
   if (view !== 'menu') {
-    return <PhoneFrame>{editors[view]}</PhoneFrame>;
+    return <PhoneFrame onBack={backToMenu}>{editors[view]}</PhoneFrame>;
   }
 
   return <SettingsHome onSelect={setView} />;

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { color, ink, weight } from '../../theme/tokens.js';
 import PhoneFrame from '../../components/PhoneFrame.jsx';
 import PinPad from '../../components/PinPad.jsx';
@@ -11,6 +12,7 @@ import { verifyPin, forgotPin } from '../../api/client.js';
 // all if requireFamily's session check already passed).
 export default function PinGate({ onVerified }) {
   const [recovering, setRecovering] = useState(false);
+  const navigate = useNavigate();
 
   async function handleSubmit(pin) {
     const { ok } = await verifyPin(pin);
@@ -25,7 +27,7 @@ export default function PinGate({ onVerified }) {
   }
 
   return (
-    <PhoneFrame>
+    <PhoneFrame onBack={() => navigate('/dashboard')}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%' }}>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ width: 64, height: 64, borderRadius: '50%', background: color.accentSettingsTint, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 22 }}>
