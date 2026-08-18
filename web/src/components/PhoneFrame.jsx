@@ -34,17 +34,19 @@ export default function PhoneFrame({ children, padding = '56px 28px 40px', onBac
           display: 'flex',
           flexDirection: 'column',
           overflowY: 'auto',
-          position: 'relative',
         }}
       >
         {onBack && (
+          // A normal flex child (not absolutely positioned over the content)
+          // so it reliably pushes whatever the screen renders below it down
+          // by a real gap, instead of the two visually crowding each other.
           <button
             onClick={onBack}
             aria-label="Back"
             style={{
-              position: 'absolute', top: 24, left: 24, width: 40, height: 40, borderRadius: '50%',
+              flex: 'none', width: 40, height: 40, borderRadius: '50%', marginBottom: 28,
               background: 'rgba(58,49,40,.06)', border: 'none', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
           >
             <span className="ms" style={{ fontSize: 20, color: ink(0.4) }}>arrow_back</span>
