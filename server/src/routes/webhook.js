@@ -57,8 +57,11 @@ export function webhookRouter() {
       }
 
       const credentials = await googleCredentialsRepo.findByFamilyId(botConfig.family_id);
+      console.log(
+        `Webhook: family=${botConfig.family_id} sender=${senderIdentifier} text=${JSON.stringify(text)} hasCalendarCreds=${!!credentials}`
+      );
 
-      await handleIncomingMessage(
+      const result = await handleIncomingMessage(
         {
           familyId: botConfig.family_id,
           externalMessageId: message.id,
@@ -75,6 +78,9 @@ export function webhookRouter() {
           },
           messenger: { send: (to, msg) => messengerIntegration.send(to, msg) },
         }
+      );
+      console.log(
+        `Webhook result: outcome=${result?.outcome} rule=${result?.rule?.name ?? ''} reason=${result?.reason ?? ''} error=${result?.error?.message ?? ''}`
       );
     } catch (err) {
       console.error('Webhook processing failed', err);
