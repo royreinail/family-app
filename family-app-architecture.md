@@ -313,6 +313,8 @@ Kept up to date as the implementation proceeds — same reasoning as the bot cap
 
 **One more real bug found and fixed the same session, after the three above:** Google Calendar's API rejects a bare `dateTime` (no UTC offset) unless a `timeZone` field travels with it — `calendar.js`'s `createEvent` never sent one. Fixed by threading the family's stored `timezone` from `webhook.js` through the pipeline into every calendar write (create, and the reply-correction update path); also gave every write a 1-hour default duration instead of `start === end`. **Confirmed working end-to-end in production after this fix:** a real WhatsApp message ("dance class Thursday 4pm") produced a real Calendar event and a real WhatsApp confirmation reply — `outcome=written rule=extraction_classification:date_time` in the server logs.
 
+**Fix: "tomorrow" resolving one day too late.** Found in the post-launch backlog session. Two-part fix: (1) the LLM's reference date defaulted to the server's UTC "today" (`new Date().toISOString()`), which silently disagrees with the family's local date for part of every day depending on timezone — now computed via `todayInTimeZone(family.timezone)` (`classify.js`) and threaded through from `webhook.js`. (2) Regardless of reference-date correctness, "today"/"tomorrow" are unambiguous enough not to trust to LLM arithmetic at all — `overrideObviousRelativeDate` deterministically recomputes the date for exactly those two keywords straight from the raw message text, after extraction, independent of whatever the LLM returned; weekday names and fuzzier relative phrases still go through the LLM's own reasoning. Regression tests (`tests/regression/dateResolution.test.js`) deliberately feed a wrong LLM answer (the exact bug observed) and assert the override corrects it.
+
 **Known gap: reminder sends need a WhatsApp message template, not freeform text.** `messenger.send()` (`server/src/integrations/messenger.js`) always sends `type: "text"`, which only works inside the 24-hour customer-service window a user opens by messaging the bot. The bot capture→reply path is always inside that window (reply fires immediately), so it's unaffected. Reminder-on-request is not: `reminder_datetime` is very often hours or days after the triggering message, i.e. outside the window by the time `sweepDueReminders` fires it, which WhatsApp's policy classifies as a business-initiated message requiring a pre-approved message template. Fixing this means creating a template (e.g. "Reminder: {{1}}"), submitting it for Meta review, and branching `messenger.send` to use the `template` message type for reminder sends specifically. Not fixed yet — flagging so a reminder silently/loudly failing outside the window isn't mistaken for a pipeline bug.
 
 ---
@@ -357,10 +359,10 @@ notes are Roy's own from the handoff, kept verbatim where useful. Status updated
   assessment-tier concern, dashboard filter logic) — worth a short design pass rather than a quick patch,
   same spirit as the multi-parent item above, just smaller in scope.
 
-**Date parsing bug — high priority, silent correctness bug**
+**Date parsing bug — high priority, silent correctness bug — ✅ fixed**
 - "Tomorrow" (and likely other relative dates) resolved to the wrong calendar date in real testing —
   observed one day later than intended. No visible error; this is the dangerous kind of bug (wrong data,
-  not a crash). Fix in progress this session — see build log below once resolved.
+  not a crash). Fixed: see "Fix: 'tomorrow' resolving one day too late" in the build log below.
 
 **Reminders — multi-parent routing** *(depends on multi-parent support above)*
 - Once multiple parents can be connected to one family, a reminder must go to whichever parent
