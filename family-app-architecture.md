@@ -286,3 +286,25 @@ Running list of everything the bot can do, kept in one place so nothing gets add
 - Bot-initiated proactive messages (e.g. "you have nothing planned tomorrow, want to add something?") — none of this exists yet; would need its own precedent pass per design principle 6 before being added.
 - Any bot action that writes/edits beyond Calendar and tasks (e.g. shopping list via WhatsApp) — Phase 2+, once shopping_items exists.
 - Group-participant bot behavior (Phase 3, ToS caveat already logged in Phase 3 section).
+
+---
+
+## Phase 1 build log (Claude Code)
+Kept up to date as the implementation proceeds — same reasoning as the bot capabilities log above: decisions made during the build that aren't visible from reading this doc's earlier sections get lost otherwise. This section is a record of what actually shipped and where it deviates from or extends what's written above; it does not replace those sections, it supplements them.
+
+**Repo & deploy:**
+- Code: [github.com/royreinail/family-app](https://github.com/royreinail/family-app), `main` branch.
+- Live: `https://family-app-production-9a73.up.railway.app`, single Railway service. Root `npm workspaces` (`server/`, `web/`) — `npm run build` builds the React app, `npm start` runs the Express server, which serves the built frontend itself (no separate static host) and applies `server/src/db/schema.sql` on every boot.
+- Stack decision resolved: **Express** (not Fastify) for the backend.
+- Known Railway/Nixpacks gotcha: a `package-lock.json` generated on macOS doesn't reliably satisfy `npm ci` on Railway's Linux builder for Vite/Rollup's optional platform binaries (`@rollup/rollup-linux-x64-gnu`, npm/cli#4828). Fixed via a `NIXPACKS_INSTALL_CMD=npm install` Railway service variable (more reliable than `nixpacks.toml`'s `[phases.install]` override, which Railway didn't consistently honor). Also: Railway's "Redeploy" button reuses the exact same source snapshot and Nixpacks' cached build plan — a genuinely new `git push` is required to force a plan regeneration after a Nixpacks-affecting config change.
+- Google OAuth consent screen is in "Testing" mode (not verified/published) — expected and fine for personal use, but every Google account that needs to sign in must be added under **OAuth consent screen → Test users** first, or sign-in fails with `access_denied`.
+
+**Data model additions beyond the table above (all additive, nothing removed):**
+- `rules.name` (text) — added so acceptance fixtures can assert *which* rule fired by a stable identifier; `trigger_type` alone isn't unique across `extraction_classification`'s four branches.
+- `google_credentials` table — holds the family's Google OAuth tokens (access/refresh token, scope, expiry, calendar_id), kept separate from `families` so a second calendar provider (Phase 3) has an obvious second implementation to add rather than a schema rework.
+
+**Rule engine implementation note:** `evaluateRules` uses `json-rules-engine` for condition evaluation (the `all`/`any`/`not` schema), but evaluates a family's matching rules one at a time in priority order and stops at the first match — `json-rules-engine`'s own `Engine.run()` fires every matching rule rather than stopping at the first, so "first match wins" (as specified above) is enforced by this thin loop around the library, not by the library itself.
+
+**Acceptance fixtures:** all 7 required fixtures (`server/tests/fixtures/acceptance.test.js`) pass, run via Node's built-in test runner against an in-memory Postgres (`pg-mem`) — no real database needed to run `npm test`.
+
+**Not yet configured on the live deployment:** WhatsApp message capture and Google Calendar sign-in are wired up but depend on credentials being added as Railway env vars (`server/.env.example` lists all of them) — see this doc's git history / conversation log for the exact walkthrough used to obtain each one, since Meta's and Google's consoles change their UI faster than this doc should try to track.
