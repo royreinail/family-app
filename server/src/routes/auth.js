@@ -45,7 +45,8 @@ export function authRouter() {
       }
       if (!family) {
         family = await familiesRepo.create({ name: `${profile.given_name || 'Our'} Family` });
-        await botConfigRepo.create({ familyId: family.id });
+        const config = await botConfigRepo.create({ familyId: family.id });
+        await botConfigRepo.syncFromEnv(config.id);
       }
 
       await googleCredentialsRepo.upsert({

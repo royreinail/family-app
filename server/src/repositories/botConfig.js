@@ -28,6 +28,23 @@ export async function create(
   return rows[0];
 }
 
+// Backfills phone_number_id/waba_id/bot_display_number from the current
+// environment onto an existing row. Phase 1 is one shared WhatsApp bot
+// number per deployment (env vars), not something set per-family through
+// onboarding, so this keeps a family's row in sync with whatever the
+// deployment's env vars say, self-healing rows created before this existed.
+export async function syncFromEnv(id, pool = getPool()) {
+  const { rows } = await pool.query(
+    `update bot_config set
+       phone_number_id = coalesce($2, phone_number_id),
+       waba_id = coalesce($3, waba_id),
+       bot_display_number = coalesce(bot_display_number, $4)
+     where id = $1 returning *`,
+    [id, process.env.WHATSAPP_PHONE_NUMBER_ID ?? null, process.env.WHATSAPP_WABA_ID ?? null, process.env.WHATSAPP_DISPLAY_NUMBER ?? null]
+  );
+  return rows[0];
+}
+
 export async function addAcceptedChatId(id, chatId, pool = getPool()) {
   const { rows } = await pool.query(
     `update bot_config set accepted_chat_ids = array_append(accepted_chat_ids, $2), connected_at = coalesce(connected_at, now())

@@ -29,6 +29,7 @@ export function botConfigRouter() {
     if (!phoneNumber) return res.status(400).json({ error: 'phoneNumber is required' });
     let config = await botConfigRepo.findByFamilyId(req.familyId);
     if (!config) config = await botConfigRepo.create({ familyId: req.familyId, webhookVerifyToken: randomUUID() });
+    await botConfigRepo.syncFromEnv(config.id);
     const updated = await botConfigRepo.addAcceptedChatId(config.id, phoneNumber);
     res.json({ connected: true, acceptedChatIds: (updated ?? config).accepted_chat_ids });
   });
