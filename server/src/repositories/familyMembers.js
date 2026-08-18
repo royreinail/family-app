@@ -22,19 +22,26 @@ export async function findById(id, pool = getPool()) {
   return rows[0] ?? null;
 }
 
-export async function update(id, { name, calendarColor, kidIcon, photoUrl }, pool = getPool()) {
+// Both scoped by familyId, not just id — without this, one family could
+// edit/delete another family's member by ID alone, violating the
+// family_id-on-every-table isolation principle (future-proofing item 1).
+export async function update(id, familyId, { name, calendarColor, kidIcon, photoUrl }, pool = getPool()) {
   const { rows } = await pool.query(
     `update family_members set
-       name = coalesce($2, name),
-       calendar_color = coalesce($3, calendar_color),
-       kid_icon = coalesce($4, kid_icon),
-       photo_url = coalesce($5, photo_url)
-     where id = $1 returning *`,
-    [id, name ?? null, calendarColor ?? null, kidIcon ?? null, photoUrl ?? null]
+       name = coalesce($3, name),
+       calendar_color = coalesce($4, calendar_color),
+       kid_icon = coalesce($5, kid_icon),
+       photo_url = coalesce($6, photo_url)
+     where id = $1 and family_id = $2 and deleted_at is null returning *`,
+    [id, familyId, name ?? null, calendarColor ?? null, kidIcon ?? null, photoUrl ?? null]
   );
-  return rows[0];
+  return rows[0] ?? null;
 }
 
-export async function softDelete(id, pool = getPool()) {
-  await pool.query(`update family_members set deleted_at = now() where id = $1`, [id]);
+export async function softDelete(id, familyId, pool = getPool()) {
+  const { rowCount } = await pool.query(
+    `update family_members set deleted_at = now() where id = $1 and family_id = $2 and deleted_at is null`,
+    [id, familyId]
+  );
+  return rowCount > 0;
 }

@@ -61,12 +61,15 @@ export function familyRouter() {
   });
 
   router.put('/family-members/:id', requirePinVerified, async (req, res) => {
-    const member = await familyMembersRepo.update(req.params.id, req.body);
+    const { name, calendarColor, kidIcon, photoUrl } = req.body;
+    const member = await familyMembersRepo.update(req.params.id, req.familyId, { name, calendarColor, kidIcon, photoUrl });
+    if (!member) return res.status(404).json({ error: 'Family member not found' });
     res.json({ member });
   });
 
   router.delete('/family-members/:id', requirePinVerified, async (req, res) => {
-    await familyMembersRepo.softDelete(req.params.id);
+    const removed = await familyMembersRepo.softDelete(req.params.id, req.familyId);
+    if (!removed) return res.status(404).json({ error: 'Family member not found' });
     res.status(204).end();
   });
 

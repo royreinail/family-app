@@ -2,23 +2,37 @@ import { useEffect, useState } from 'react';
 import { color, ink, weight, personPalette, kidIconChoices } from '../../../theme/tokens.js';
 import ProgressDots from '../../../components/ProgressDots.jsx';
 import PrimaryButton from '../../../components/PrimaryButton.jsx';
-import { getFamilyMembers, createFamilyMember, updateFamilyMember } from '../../../api/client.js';
+import { getFamilyMembers, createFamilyMember, updateFamilyMember, deleteFamilyMember } from '../../../api/client.js';
 
 export const STEP_INDEX = 2;
+
+const BLANK_DRAFT = { id: null, name: '', calendarColor: '', kidIcon: kidIconChoices[0] };
 
 function nextUnusedColor(members) {
   const used = new Set(members.map((m) => m.calendar_color));
   return personPalette.find((c) => !used.has(c)) ?? personPalette[members.length % personPalette.length];
 }
 
+function draftFromMember(m) {
+  return { id: m.id, name: m.name, calendarColor: m.calendar_color, kidIcon: m.kid_icon };
+}
+
 /**
  * Reused as-is in Settings Home > Family Members (edit mode) — the same
  * component runs the onboarding step and the later single-screen edit.
+ *
+ * The one card below serves double duty: tapping an existing member's chip
+ * loads them into it for editing (draft.id set); tapping "+ New person" (or
+ * finishing a save) resets it to a blank create-new draft (draft.id null).
  */
 export default function FamilyMembersStep({ totalSteps, onNext, editMode = false, onDone }) {
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [draft, setDraft] = useState({ name: '', calendarColor: '', kidIcon: kidIconChoices[0] });
+  const [draft, setDraft] = useState(BLANK_DRAFT);
+  // Two-tap "Remove" — first tap arms it, second (within a few seconds)
+  // actually deletes. Keeps the gentle, no-modal-dialog tone the rest of the
+  // app uses instead of a native confirm() popup.
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
 
   useEffect(() => {
     getFamilyMembers().then(({ members }) => {
@@ -28,12 +42,41 @@ export default function FamilyMembersStep({ totalSteps, onNext, editMode = false
     });
   }, []);
 
-  async function addMember() {
+  function selectDraft(nextDraft) {
+    setConfirmingRemove(false);
+    setDraft(nextDraft);
+  }
+
+  function startNewPerson(currentMembers = members) {
+    selectDraft({ ...BLANK_DRAFT, calendarColor: nextUnusedColor(currentMembers), kidIcon: kidIconChoices[currentMembers.length % kidIconChoices.length] });
+  }
+
+  async function saveMember() {
     if (!draft.name.trim()) return;
-    const { member } = await createFamilyMember(draft);
-    const updated = [...members, member];
+    const { name, calendarColor, kidIcon } = draft;
+    if (draft.id) {
+      const { member } = await updateFamilyMember(draft.id, { name, calendarColor, kidIcon });
+      const updated = members.map((m) => (m.id === member.id ? member : m));
+      setMembers(updated);
+      startNewPerson(updated);
+    } else {
+      const { member } = await createFamilyMember({ name, calendarColor, kidIcon });
+      const updated = [...members, member];
+      setMembers(updated);
+      startNewPerson(updated);
+    }
+  }
+
+  async function removeMember() {
+    if (!draft.id) return;
+    if (!confirmingRemove) {
+      setConfirmingRemove(true);
+      return;
+    }
+    await deleteFamilyMember(draft.id);
+    const updated = members.filter((m) => m.id !== draft.id);
     setMembers(updated);
-    setDraft({ name: '', calendarColor: nextUnusedColor(updated), kidIcon: kidIconChoices[updated.length % kidIconChoices.length] });
+    startNewPerson(updated);
   }
 
   return (
@@ -51,13 +94,41 @@ export default function FamilyMembersStep({ totalSteps, onNext, editMode = false
         {!loading && members.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, padding: '2px 6px 4px' }}>
             {members.map((m) => (
-              <div key={m.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
-                <div style={{ width: 52, height: 52, borderRadius: '50%', background: m.calendar_color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button
+                key={m.id}
+                onClick={() => selectDraft(draftFromMember(m))}
+                style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                  background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                }}
+              >
+                <div style={{
+                  width: 52, height: 52, borderRadius: '50%', background: m.calendar_color,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: draft.id === m.id ? `0 0 0 3px ${color.surface}, 0 0 0 6px ${m.calendar_color}` : 'none',
+                }}>
                   <span style={{ fontSize: 28 }}>{m.kid_icon}</span>
                 </div>
                 <div style={{ font: `${weight.bold} 13px/1 Nunito, sans-serif`, color: ink(0.5) }}>{m.name}</div>
-              </div>
+              </button>
             ))}
+            {draft.id && (
+              <button
+                onClick={() => startNewPerson()}
+                style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                  background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                }}
+              >
+                <div style={{
+                  width: 52, height: 52, borderRadius: '50%', background: color.surfaceInset,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <span className="ms" style={{ fontSize: 24, color: ink(0.4) }}>add</span>
+                </div>
+                <div style={{ font: `${weight.bold} 13px/1 Nunito, sans-serif`, color: ink(0.4) }}>New person</div>
+              </button>
+            )}
           </div>
         )}
 
@@ -110,7 +181,7 @@ export default function FamilyMembersStep({ totalSteps, onNext, editMode = false
           </div>
 
           <button
-            onClick={addMember}
+            onClick={saveMember}
             disabled={!draft.name.trim()}
             style={{
               marginTop: 16, width: '100%', height: 44, borderRadius: 22, border: 'none',
@@ -119,8 +190,22 @@ export default function FamilyMembersStep({ totalSteps, onNext, editMode = false
               font: `${weight.heavy} 15px/1 Nunito, sans-serif`, cursor: draft.name.trim() ? 'pointer' : 'not-allowed',
             }}
           >
-            + Add to family
+            {draft.id ? 'Save changes' : '+ Add to family'}
           </button>
+
+          {draft.id && (
+            <button
+              onClick={removeMember}
+              style={{
+                marginTop: 10, width: '100%', height: 36, borderRadius: 18, border: 'none',
+                background: confirmingRemove ? '#d9645a' : 'transparent',
+                color: confirmingRemove ? '#fff' : ink(0.4),
+                font: `${weight.bold} 13.5px/1 Nunito, sans-serif`, cursor: 'pointer',
+              }}
+            >
+              {confirmingRemove ? 'Tap again to remove' : `Remove ${draft.name || 'from family'}`}
+            </button>
+          )}
         </div>
       </div>
 
