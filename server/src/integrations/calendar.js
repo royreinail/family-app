@@ -65,6 +65,11 @@ export async function deleteEvent(credentials, externalId) {
 export async function listCalendars(credentials) {
   const calendar = clientFor(credentials);
   const { data } = await calendar.calendarList.list();
+  // TEMP DEBUG (remove after capturing a real response shape for
+  // tests/regression/calendarList.test.js) — logs the raw Google response
+  // so a real fixture can be built instead of a guessed one. No token data
+  // in here, just calendar metadata (id/summary/accessRole/etc).
+  console.log('DEBUG calendarList.list raw items:', JSON.stringify(data.items));
   return (data.items || [])
     .filter((cal) => cal.accessRole === 'owner' || cal.accessRole === 'writer')
     .map((cal) => ({ id: cal.id, summary: cal.summary, primary: !!cal.primary }));
