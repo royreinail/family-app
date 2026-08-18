@@ -25,6 +25,49 @@ export function createApp() {
 
   app.get('/healthz', (req, res) => res.json({ ok: true }));
 
+  // Required by Meta's app-publish checklist for the WhatsApp use case.
+  // Plain and honest: this is a personal family tool, not a product with
+  // a legal/policy team, but the WhatsApp integration still needs a real,
+  // public URL describing what happens to a family's data.
+  app.get('/privacy', (req, res) => {
+    res.type('html').send(`<!doctype html>
+<html><head><meta charset="utf-8"><title>Privacy Policy — Family App</title>
+<style>body{font:16px/1.6 -apple-system,system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 20px;color:#222}h1{font-size:24px}h2{font-size:18px;margin-top:28px}</style>
+</head><body>
+<h1>Privacy Policy</h1>
+<p>Family App is a personal household scheduling tool. It is not a commercial product and is not offered
+to the general public — it is used only by one family and the people they explicitly add to it.</p>
+
+<h2>What data is collected</h2>
+<ul>
+<li>Messages, photos, or forwarded emails a family member sends to the WhatsApp bot number, so the app can
+extract event/task details (title, date, time, who it's for, category).</li>
+<li>Google Calendar access (read/write), used only to create, read, and update events on the family's own
+calendar.</li>
+<li>Family member profile info entered during setup: name, a chosen color, and an icon.</li>
+<li>A log of processed messages and their extraction results, kept so mistaken or duplicate entries can be
+undone or corrected.</li>
+</ul>
+
+<h2>How it's used</h2>
+<p>Solely to turn a forwarded message into a calendar event or task for that family, and to reply confirming
+what was added. Nothing is used for advertising, profiling, or any purpose beyond running the family's own
+schedule.</p>
+
+<h2>Who has access</h2>
+<p>Only the family that set up this instance of the app. Data is not sold, shared with third parties, or
+used to train any model.</p>
+
+<h2>Data retention</h2>
+<p>Records are soft-deleted (marked removed, not immediately erased) so that undo/correction can work; a
+family member can request permanent deletion by contacting the app owner directly.</p>
+
+<h2>Contact</h2>
+<p>Questions about this policy or a data deletion request can be sent to the person who set up this
+instance of the app for your family.</p>
+</body></html>`);
+  });
+
   app.use('/auth', authRouter());
   app.use('/api', familyRouter());
   app.use('/api', botConfigRouter());
