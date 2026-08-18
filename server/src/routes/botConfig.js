@@ -12,7 +12,8 @@ export function botConfigRouter() {
   router.use(requireFamily);
 
   router.get('/bot-config', async (req, res) => {
-    const config = await botConfigRepo.findByFamilyId(req.familyId);
+    let config = await botConfigRepo.findByFamilyId(req.familyId);
+    if (config) config = await botConfigRepo.syncFromEnv(config.id);
     res.json({
       botDisplayNumber: config?.bot_display_number || process.env.WHATSAPP_DISPLAY_NUMBER || null,
       connected: !!config?.connected_at,
