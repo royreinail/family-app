@@ -49,3 +49,35 @@ export function addOneHour(dateStr, timeStr) {
     time: `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`,
   };
 }
+
+// "Today" in a given IANA timezone, as YYYY-MM-DD — deliberately NOT
+// `new Date().toISOString().slice(0,10)`, which is always the server's UTC
+// date and silently disagrees with the family's local date for part of
+// every day (found as a real bug: messages sent late evening in a
+// timezone ahead of UTC got "tomorrow" resolved against yesterday's UTC
+// date). en-CA's default date format is already YYYY-MM-DD.
+export function todayInTimeZone(timeZone = 'UTC') {
+  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+}
+
+export function addDays(dateStr, days) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const d = new Date(Date.UTC(year, month - 1, day));
+  d.setUTCDate(d.getUTCDate() + days);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+}
+
+// The LLM resolves relative dates itself (its one job includes that), but
+// "today"/"tomorrow" are unambiguous enough that we don't need to trust an
+// LLM's arithmetic for them — a real off-by-one was observed in testing
+// ("tomorrow" landing one day later than intended). Deterministically
+// override the candidate's date for these two exact cases; anything less
+// clear-cut (weekday names, "next Friday", "in two weeks") still goes
+// through the LLM's own reasoning against the reference date.
+export function overrideObviousRelativeDate(rawInput, candidate, referenceDate) {
+  const text = (rawInput || '').toLowerCase();
+  if (/\btomorrow\b/.test(text)) return { ...candidate, date: addDays(referenceDate, 1) };
+  if (/\btoday\b/.test(text) || /\btonight\b/.test(text)) return { ...candidate, date: referenceDate };
+  return candidate;
+}

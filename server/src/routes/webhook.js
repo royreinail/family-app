@@ -8,6 +8,7 @@ import * as googleCredentialsRepo from '../repositories/googleCredentials.js';
 import * as familiesRepo from '../repositories/families.js';
 import * as extractionLogRepo from '../repositories/extractionLog.js';
 import { handleIncomingMessage } from '../pipeline/pipeline.js';
+import { todayInTimeZone } from '../pipeline/classify.js';
 import * as calendarIntegration from '../integrations/calendar.js';
 import * as messengerIntegration from '../integrations/messenger.js';
 import * as llmIntegration from '../integrations/llm.js';
@@ -59,6 +60,7 @@ export function webhookRouter() {
 
       const credentials = await googleCredentialsRepo.findByFamilyId(botConfig.family_id);
       const family = await familiesRepo.findById(botConfig.family_id);
+      const timeZone = family?.timezone || 'UTC';
       console.log(
         `Webhook: family=${botConfig.family_id} sender=${senderIdentifier} text=${JSON.stringify(text)} hasCalendarCreds=${!!credentials}`
       );
@@ -72,14 +74,14 @@ export function webhookRouter() {
           replyToExtractionLogId,
         },
         {
-          llmExtract: (raw) => llmIntegration.extract(raw),
+          llmExtract: (raw) => llmIntegration.extract(raw, { referenceDate: todayInTimeZone(timeZone) }),
           calendar: {
             createEvent: (evt) => calendarIntegration.createEvent(credentials, evt),
             updateEvent: (id, patch) => calendarIntegration.updateEvent(credentials, id, patch),
             deleteEvent: (id) => calendarIntegration.deleteEvent(credentials, id),
           },
           messenger: { send: (to, msg) => messengerIntegration.send(to, msg) },
-          timeZone: family?.timezone || 'UTC',
+          timeZone,
         }
       );
       console.log(

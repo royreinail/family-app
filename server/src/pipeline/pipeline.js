@@ -11,7 +11,7 @@ import * as tasksRepo from '../repositories/tasks.js';
 import * as botConfigRepo from '../repositories/botConfig.js';
 import { evaluateRules } from '../rules/engine.js';
 import { matchCommand, helpReply, formatTaskList, parseCorrectedTime } from './commands.js';
-import { factsFromCandidate, confirmReply, qualifyReply, clarifyReply, addOneHour } from './classify.js';
+import { factsFromCandidate, confirmReply, qualifyReply, clarifyReply, addOneHour, todayInTimeZone, overrideObviousRelativeDate } from './classify.js';
 import { scheduleReminder } from './reminders.js';
 
 async function withRetry(fn, { attempts = 3, baseDelayMs = 200 } = {}) {
@@ -87,6 +87,11 @@ export async function handleIncomingMessage(message, deps) {
     await extractionLogRepo.updateState(log.id, { state: 'failed', error: String(err?.message || err) }, pool);
     return { outcome: 'failed', error: err, log };
   }
+  // "today"/"tomorrow" are unambiguous enough to not trust to LLM date
+  // arithmetic — see classify.js for why (a real off-by-one was observed).
+  // Applies (and can fill in a date the LLM missed) whenever the raw text
+  // says one of those words, independent of what the LLM itself returned.
+  candidate = overrideObviousRelativeDate(text, candidate, todayInTimeZone(timeZone));
   await extractionLogRepo.updateState(log.id, { state: 'extracted', aiCandidate: candidate }, pool);
 
   // 5. Assessment rules — act on the LLM's structured output.
