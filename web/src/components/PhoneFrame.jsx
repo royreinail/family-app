@@ -31,6 +31,11 @@ export default function PhoneFrame({ children, padding = '56px 28px 40px', onBac
           border: `1px solid ${'rgba(0,0,0,.08)'}`,
           boxShadow: shadow.card,
           padding,
+          // Keep the gap above the button tight (matches the original
+          // absolute-positioned look) independent of whatever top padding
+          // a given screen asks for — the button's own marginBottom below
+          // is what creates the gap to the content, not this.
+          paddingTop: onBack ? 24 : undefined,
           display: 'flex',
           flexDirection: 'column',
           overflowY: 'auto',
