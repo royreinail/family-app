@@ -19,6 +19,7 @@ import * as botConfigRepo from '../../src/repositories/botConfig.js';
 import * as sourceMappingsRepo from '../../src/repositories/sourceMappings.js';
 import * as familyMembersRepo from '../../src/repositories/familyMembers.js';
 import * as rulesRepo from '../../src/repositories/rules.js';
+import * as activityIconsRepo from '../../src/repositories/activityIcons.js';
 import { ensureFamilySetup } from '../../src/services/familySetup.js';
 import { handleIncomingMessage } from '../../src/pipeline/pipeline.js';
 
@@ -50,6 +51,14 @@ test('ensureFamilySetup seeds rules and bot_config for a family created the real
   assert.ok(config, 'bot_config row should exist');
   assert.equal(config.phone_number_id, 'env-phone-id', 'phone_number_id should be synced from the environment');
   assert.equal(config.waba_id, 'env-waba-id');
+
+  // Same bug class, same fix shape: activityIconsRepo.seedDefaults was only
+  // ever called from a test helper too, so every real family's dashboard
+  // fell through resolveIcon's one fallback for every single event (Roy:
+  // "all of the icons receive the same [fallback] icon").
+  const icons = await activityIconsRepo.findAllForFamily(family.id, pool);
+  assert.ok(icons.length > 0, 'default activity icons should be seeded');
+  assert.ok(icons.some((i) => i.keyword === 'dance'));
 });
 
 test('a real end-to-end message through a freshly signed-up family gets a reply, not silent "stopped"', async () => {

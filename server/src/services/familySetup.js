@@ -12,6 +12,7 @@
 // See family-app-architecture.md's Phase 1 build log for the full story.
 import * as botConfigRepo from '../repositories/botConfig.js';
 import * as rulesRepo from '../repositories/rules.js';
+import * as activityIconsRepo from '../repositories/activityIcons.js';
 import { seedDefaultRules } from '../rules/defaultRules.js';
 
 export async function ensureFamilySetup(familyId, pool) {
@@ -21,4 +22,13 @@ export async function ensureFamilySetup(familyId, pool) {
 
   const existingRules = await rulesRepo.findAllForFamily(familyId, pool);
   if (existingRules.length === 0) await seedDefaultRules(familyId, pool);
+
+  // Same bug class as the rules table above: activityIconsRepo.seedDefaults
+  // was only ever called from a test helper, never from the real sign-in
+  // flow, so every real family's activity_icons table was empty — every
+  // event silently fell through to resolveIcon's one fallback (📌),
+  // regardless of what the event actually was (Roy: "all of the icons
+  // receive the same [fallback] icon").
+  const existingIcons = await activityIconsRepo.findAllForFamily(familyId, pool);
+  if (existingIcons.length === 0) await activityIconsRepo.seedDefaults(familyId, pool);
 }
