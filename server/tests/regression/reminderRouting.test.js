@@ -23,10 +23,19 @@ test('a pure reminder request ("remind me to X at T") goes to tasks, not Calenda
   const { family, knownSender } = await seedFamily(pool);
   const calendar = createFakeCalendar();
   const messenger = createFakeMessenger();
+  // The message text says "today" — the pipeline's overrideObviousRelativeDate
+  // deterministically resolves that against the *real* current date
+  // (classify.js's todayInTimeZone), independent of whatever the fake LLM
+  // response's own `date` field says. Using a hardcoded absolute date here
+  // (e.g. '2026-08-18') alongside "today" in the text is exactly the kind
+  // of fragility that broke this test the moment real-world time crossed
+  // into the next day mid-session — computing it the same way the pipeline
+  // does keeps this test correct on every future run, not just today.
+  const today = new Date().toISOString().slice(0, 10);
   const llm = createFakeLlm({
     'Remind me to do the laundry at 22:30 today': {
-      title: 'do the laundry', date: '2026-08-18', time: '22:30', person: null, category: null,
-      reminder_requested: true, reminder_datetime: '2026-08-18T22:30:00',
+      title: 'do the laundry', date: today, time: '22:30', person: null, category: null,
+      reminder_requested: true, reminder_datetime: `${today}T22:30:00`,
     },
   });
 
@@ -43,7 +52,7 @@ test('a pure reminder request ("remind me to X at T") goes to tasks, not Calenda
   const tasks = await tasksRepo.findAllForFamily(family.id, pool);
   assert.equal(tasks.length, 1, 'exactly one task — not a duplicate reminder-carrier row');
   assert.equal(tasks[0].reminder_policy, 'requested');
-  assert.equal(tasks[0].reminder_datetime.toISOString(), '2026-08-18T22:30:00.000Z');
+  assert.equal(tasks[0].reminder_datetime.toISOString(), `${today}T22:30:00.000Z`);
   assert.equal(messenger.sent.length, 1);
   assert.match(messenger.sent[0].text, /remind you/i);
 });

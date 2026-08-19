@@ -6,16 +6,26 @@
 // reminders through the same mechanism.
 import * as tasksRepo from '../repositories/tasks.js';
 import * as extractionLogRepo from '../repositories/extractionLog.js';
+import { localDateTimeToUtcIso } from './classify.js';
 
-export async function scheduleReminder({ familyId, title, reminderDatetime, sourceExtractionLogId }, pool) {
+// `reminderDatetime` arrives as a naive local wall-clock string (LLM
+// convention, same as date/time elsewhere) — `dueDate` is captured from
+// that local string *before* conversion (a UTC-converted value's date
+// portion can land on the wrong day near local midnight), while the actual
+// `reminder_datetime` column gets the real UTC instant so sweepDueReminders'
+// `<= now()` comparison fires at the right absolute moment. See
+// localDateTimeToUtcIso for why this conversion has to happen at all.
+export async function scheduleReminder({ familyId, title, reminderDatetime, timeZone = 'UTC', sourceExtractionLogId }, pool) {
+  const localDate = reminderDatetime.slice(0, 10);
+  const localTime = reminderDatetime.slice(11, 16);
   return tasksRepo.create(
     {
       familyId,
       title: `Reminder: ${title || 'your request'}`,
-      dueDate: reminderDatetime.slice(0, 10),
+      dueDate: localDate,
       importance: 'Med',
       reminderPolicy: 'requested',
-      reminderDatetime,
+      reminderDatetime: localDateTimeToUtcIso(localDate, localTime, timeZone),
       sourceExtractionLogId,
     },
     pool

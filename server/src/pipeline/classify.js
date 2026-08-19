@@ -115,6 +115,33 @@ export function overrideObviousRelativeDate(rawInput, candidate, referenceDate) 
   return candidate;
 }
 
+// Fix: reminders firing hours off from the intended time (real bug —
+// "remind me to do the laundry at 22:30 today" arrived at 1:30am for a
+// family in Asia/Jerusalem, UTC+3). `reminder_datetime` from the LLM is a
+// naive local wall-clock value, same convention as `date`/`time` — but
+// unlike those, which only ever reach Google Calendar alongside an explicit
+// `timeZone` field (calendar.js's createEvent), reminder_datetime was
+// inserted straight into a `timestamptz` column with no offset attached.
+// Postgres/pg interpret a bare timestamp string as the *server's* zone
+// (UTC on Railway), not the family's — so a reminder set for 22:30 in a
+// zone ahead of UTC got stored as 22:30 UTC and fired hours later than
+// intended. This converts a local wall-clock date+time to the correct UTC
+// instant before it's ever persisted, using the same double-formatting
+// technique as todayInTimeZone below (no timezone library — format a guess
+// through Intl, measure how far off it landed, correct by that amount).
+export function localDateTimeToUtcIso(dateStr, timeStr, timeZone = 'UTC') {
+  const guessUtc = new Date(`${dateStr}T${timeStr}:00Z`);
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(guessUtc).map((p) => [p.type, p.value]));
+  const hour = parts.hour === '24' ? 0 : Number(parts.hour); // some locales report midnight as "24"
+  const shownAsUtc = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), hour, Number(parts.minute), Number(parts.second));
+  const offsetMs = guessUtc.getTime() - shownAsUtc;
+  return new Date(guessUtc.getTime() + offsetMs).toISOString();
+}
+
 // Backlog 4.1-4.3 (event audience & kid visibility) — the LLM already
 // judges 'family' vs 'parent_only' itself (see llm.js's system prompt;
 // defaults to 'family' whenever unclear, matching the kid dashboard's

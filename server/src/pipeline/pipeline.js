@@ -22,6 +22,7 @@ import {
   overrideObviousRelativeDate,
   overrideExplicitAudienceKeyword,
   resolveEventColorId,
+  localDateTimeToUtcIso,
 } from './classify.js';
 import { scheduleReminder } from './reminders.js';
 
@@ -149,7 +150,11 @@ export async function handleIncomingMessage(message, deps) {
         title: candidate.title || 'Reminder',
         dueDate: candidate.date,
         reminderPolicy: 'requested',
-        reminderDatetime: candidate.reminder_datetime,
+        // reminder_datetime is a naive local wall-clock value from the LLM
+        // (same convention as date/time) — must convert to a real UTC
+        // instant before it hits the timestamptz column, or it fires hours
+        // off in any timezone that isn't UTC (see localDateTimeToUtcIso).
+        reminderDatetime: localDateTimeToUtcIso(candidate.reminder_datetime.slice(0, 10), candidate.reminder_datetime.slice(11, 16), timeZone),
         sourceExtractionLogId: log.id,
       },
       pool
@@ -194,7 +199,7 @@ export async function handleIncomingMessage(message, deps) {
   // create a duplicate reminder-carrier task for the same request).
   if (action.type !== 'write_task_reminder' && candidate.reminder_requested && candidate.reminder_datetime) {
     result.reminder = await scheduleReminder(
-      { familyId, title: candidate.title, reminderDatetime: candidate.reminder_datetime, sourceExtractionLogId: log.id },
+      { familyId, title: candidate.title, reminderDatetime: candidate.reminder_datetime, timeZone, sourceExtractionLogId: log.id },
       pool
     );
   }
