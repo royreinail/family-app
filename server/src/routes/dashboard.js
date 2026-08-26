@@ -9,7 +9,7 @@ import * as familyMembersRepo from '../repositories/familyMembers.js';
 import * as activityIconsRepo from '../repositories/activityIcons.js';
 import * as googleCredentialsRepo from '../repositories/googleCredentials.js';
 import * as calendar from '../integrations/calendar.js';
-import { shouldShowOnKidBoard } from '../pipeline/classify.js';
+import { shouldShowOnKidBoard, iconForCategory } from '../pipeline/classify.js';
 import { requireFamily } from './middleware.js';
 
 function startOfTomorrow(timezone) {
@@ -22,6 +22,20 @@ function matchMembersToEvent(event, members) {
   const haystack = `${event.summary || ''} ${event.description || ''}`.toLowerCase();
   const matched = members.filter((m) => haystack.includes(m.name.toLowerCase()));
   return matched.length ? matched : [];
+}
+
+// Free English-keyword match first (activityIconsRepo.resolveIcon — no LLM
+// involved, already correct for plain English titles); falls back to the
+// LLM's own activity_category classification persisted at write time
+// (calendar.js's extendedProperties.private.activityCategory), which
+// covers non-English text and phrasing the keyword list misses. Only
+// events written before activity_category existed (or where the LLM
+// genuinely couldn't tell) fall all the way through to classify.js's own
+// 📌 default.
+export function resolveEventIcon(item, icons) {
+  const keywordMatch = activityIconsRepo.resolveIcon(icons, item.summary);
+  if (keywordMatch) return keywordMatch;
+  return iconForCategory(item.extendedProperties?.private?.activityCategory);
 }
 
 export function dashboardRouter() {
@@ -54,7 +68,7 @@ export function dashboardRouter() {
     // visually hidden client-side.
     const events = items.filter(shouldShowOnKidBoard).map((item) => {
       const matchedMembers = matchMembersToEvent(item, members);
-      const icon = activityIconsRepo.resolveIcon(icons, item.summary);
+      const icon = resolveEventIcon(item, icons);
       return {
         id: item.id,
         title: item.summary || 'Untitled',

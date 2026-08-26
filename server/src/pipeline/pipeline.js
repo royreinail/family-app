@@ -131,6 +131,10 @@ export async function handleIncomingMessage(message, deps) {
       // audience at all — default to 'family' (visible), never silently
       // hide an event because the field happens to be missing.
       audience: candidate.audience || 'family',
+      // Same story for candidates predating this field — omit rather than
+      // pass an invalid category through; the dashboard's own fallback
+      // (iconForCategory) already treats "nothing to match" as 📌.
+      activityCategory: candidate.activity_category || undefined,
     });
     await extractionLogRepo.updateState(
       log.id,

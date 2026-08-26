@@ -1,6 +1,8 @@
 // The LLM's one job: read raw input, return structured fields only. No
 // confidence score, no routing decision, no reply wording — everything
 // downstream is deterministic app code (see rules/ and pipeline/).
+import { ACTIVITY_CATEGORIES } from './activityCategories.js';
+
 const EXTRACTION_TOOL = {
   name: 'record_extraction',
   description: 'Record the structured fields extracted from a forwarded family message.',
@@ -19,8 +21,13 @@ const EXTRACTION_TOOL = {
         enum: ['family', 'parent_only'],
         description: "'family' unless the message is clearly only relevant to a parent (a personal appointment, work meeting, 'date night' with no child involved, first-person language about the sender alone). Default to 'family' whenever unclear.",
       },
+      activity_category: {
+        type: 'string',
+        enum: ACTIVITY_CATEGORIES.map((c) => c.category),
+        description: "Best-matching activity category, regardless of what language the message is in — used to pick a suitable icon (e.g. a dance class gets a dancer, a birthday gets a cake) without relying on an English keyword appearing in the text. Use 'other' only when nothing else genuinely fits.",
+      },
     },
-    required: ['title', 'date', 'time', 'person', 'category', 'reminder_requested', 'reminder_datetime', 'audience'],
+    required: ['title', 'date', 'time', 'person', 'category', 'reminder_requested', 'reminder_datetime', 'audience', 'activity_category'],
   },
 };
 
@@ -34,12 +41,15 @@ explicitly asks to be reminded (e.g. "remind me to..."). Resolve relative dates 
 is clearly not relevant to show a child (a parent's own appointment, a work meeting, "date night"
 with no child involved); default to 'family' whenever it's unclear or the message concerns the
 household generally — the kid dashboard hides 'parent_only' events entirely, so treat 'family' as
-the safe default, not 'parent_only'.`;
+the safe default, not 'parent_only'. Also classify activity_category from the enum provided —
+pick whichever one the activity actually is (a dance class is 'dance', a birthday party is
+'birthday', a grocery run is 'shopping', etc.), independent of what language the message is
+written in; use 'other' only when nothing genuinely fits.`;
 
 /**
  * @param {string} rawInput - message text, or a caption/empty string when `opts.image` is set
  * @param {{referenceDate?: string, model?: string, image?: {base64: string, mimeType: string}}} [opts]
- * @returns {Promise<{title:string|null,date:string|null,time:string|null,person:string|null,category:string|null,reminder_requested:boolean,reminder_datetime:string|null,audience:'family'|'parent_only'}>}
+ * @returns {Promise<{title:string|null,date:string|null,time:string|null,person:string|null,category:string|null,reminder_requested:boolean,reminder_datetime:string|null,audience:'family'|'parent_only',activity_category:string}>}
  */
 export async function extract(rawInput, opts = {}) {
   const apiKey = process.env.ANTHROPIC_API_KEY;

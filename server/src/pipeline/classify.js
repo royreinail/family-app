@@ -4,6 +4,7 @@
 // candidate into the facts those rules evaluate, and turns a matched action
 // into human copy / calendar payloads.
 import { hexToColorId, DEFAULT_COLOR_ID } from '../integrations/googleColors.js';
+import { ACTIVITY_CATEGORIES } from '../integrations/activityCategories.js';
 
 // Matches the extracted `person` string against real family members so the
 // Calendar event can carry that person's actual assigned color. Anything
@@ -16,6 +17,15 @@ export function resolveEventColorId(personName, familyMembers) {
   const matches = familyMembers.filter((m) => needle.includes(m.name.toLowerCase()));
   if (matches.length !== 1) return DEFAULT_COLOR_ID;
   return hexToColorId(matches[0].calendar_color);
+}
+
+// Icon fallback for when the free English-keyword match (activityIcons.js's
+// resolveIcon) misses — either the title's in another language, or it just
+// doesn't contain one of the hardcoded keywords. Same canonical category
+// list backs both, so a "dance" match via keyword and a "dance" match via
+// this always land on the identical icon.
+export function iconForCategory(category) {
+  return ACTIVITY_CATEGORIES.find((c) => c.category === category)?.icon ?? '📌';
 }
 
 export function factsFromCandidate(candidate) {
