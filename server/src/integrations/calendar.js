@@ -5,6 +5,22 @@
 // not a rewrite.
 import { google } from 'googleapis';
 
+// Real production case (confirmed from logs): `GaxiosError: invalid_grant`
+// when Google refuses to refresh the access token — the refresh token
+// itself is dead (revoked, the account's password changed, or — very
+// plausible while GOOGLE_OAUTH_CLIENT_ID's consent screen is still in
+// "Testing" publishing status — Google expires unused refresh tokens after
+// 7 days there). This is NOT transient: retrying the same request will
+// never succeed, unlike a genuine API hiccup. The caller (dashboard.js)
+// uses this to show "reconnect your calendar" instead of a generic
+// "couldn't load, try again" that would never actually resolve on its own.
+export function isReauthRequiredError(err) {
+  return (
+    err?.response?.data?.error === 'invalid_grant' ||
+    String(err?.message || '').includes('invalid_grant')
+  );
+}
+
 function clientFor(credentials) {
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_OAUTH_CLIENT_ID,

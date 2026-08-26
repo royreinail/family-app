@@ -60,7 +60,14 @@ export function dashboardRouter() {
       items = await calendar.listEvents(credentials, { timeMin, timeMax });
     } catch (err) {
       console.error('Failed to list calendar events', err);
-      return res.status(502).json({ connected: true, error: 'calendar_unavailable', members, events: [] });
+      // A dead refresh token (see calendar.js's isReauthRequiredError) is
+      // not a transient hiccup — retrying will never succeed until the
+      // family reconnects Google Calendar, so it gets a distinct error the
+      // frontend can act on (a real "reconnect" prompt) instead of the
+      // generic "couldn't load, try again in a bit" that would just loop
+      // forever on this specific failure.
+      const errorCode = calendar.isReauthRequiredError(err) ? 'reauth_required' : 'calendar_unavailable';
+      return res.status(502).json({ connected: true, error: errorCode, members, events: [] });
     }
 
     // Backlog 4.2 — parent_only events (see classify.js's
