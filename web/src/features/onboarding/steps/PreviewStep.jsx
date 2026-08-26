@@ -36,8 +36,17 @@ export default function PreviewStep({ totalSteps, onFinish }) {
         <div style={{ font: `${weight.heavy} 30px/1.2 Nunito, sans-serif`, color: color.ink, letterSpacing: '-.4px' }}>Here's tomorrow</div>
         <div style={{ font: `${weight.semibold} 17px/1.45 Nunito, sans-serif`, color: ink(0.48), marginTop: 6 }}>This is what the kids will see.</div>
       </div>
-      <div style={{ flex: 1, background: color.page, borderRadius: 26, boxShadow: `inset 0 2px 6px ${ink(0.06)}`, overflow: 'hidden' }}>
-        <TomorrowBoard members={members} events={sampleEvents(members)} compact />
+      {/*
+        containerType: 'size' — the same board component, same cqw/cqh
+        sizing rules, now correctly scales itself DOWN for this small box
+        instead of needing a separate `compact` prop (removed). This is
+        the actual point of switching to container queries: one set of
+        sizing rules that's automatically right for a full phone screen, a
+        kiosk tablet, AND this preview, because each is just a differently
+        sized container, not a different code path.
+      */}
+      <div style={{ flex: 1, background: color.page, borderRadius: 26, boxShadow: `inset 0 2px 6px ${ink(0.06)}`, overflow: 'hidden', containerType: 'size' }}>
+        <TomorrowBoard members={members} events={sampleEvents(members)} />
       </div>
       <div style={{ marginTop: 16 }}>
         <PrimaryButton onClick={onFinish}>Finish setup</PrimaryButton>

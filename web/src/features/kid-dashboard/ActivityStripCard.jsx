@@ -1,4 +1,4 @@
-import { color, weight, radius, font } from '../../theme/tokens.js';
+import { color, weight, font } from '../../theme/tokens.js';
 import { cardBackground, formatTime } from '../../theme/scheduleLogic.js';
 
 // Mobile-portrait card shape (approved mock: Tomorrow Board.dc.html, option
@@ -7,23 +7,20 @@ import { cardBackground, formatTime } from '../../theme/scheduleLogic.js';
 // (cardBackground) and same event/members data, just laid out differently —
 // TomorrowBoard.jsx renders both this and ActivityCard side by side and lets
 // a CSS orientation media query pick which one shows (see globals.css).
-export default function ActivityStripCard({ event, members, compact = false }) {
+//
+// Sizing is fluid (clamp + cqw against TomorrowBoard.jsx's container), not
+// a hardcoded compact/full boolean — see that file's own comment for why.
+export default function ActivityStripCard({ event, members }) {
   const bg = cardBackground(event.memberIds, members);
   const time = formatTime(event.start);
 
-  const style = { borderRadius: compact ? radius.md : radius.xl, overflow: 'hidden' };
+  const style = { borderRadius: 'clamp(14px, 3cqw, 26px)', overflow: 'hidden', '--stripe': 'clamp(10px, 2cqw, 26px)' };
   if (bg.type === 'solid') style.background = bg.color;
   else if (bg.type === 'stripe') {
-    const stripe = compact ? 12 : 26;
-    style.background = `repeating-linear-gradient(135deg,${bg.colors[0]} 0 ${stripe}px,${bg.colors[1]} ${stripe}px ${stripe * 2}px)`;
+    style.background = `repeating-linear-gradient(135deg,${bg.colors[0]} 0 var(--stripe),${bg.colors[1]} var(--stripe) calc(var(--stripe) * 2))`;
   } else {
     style.background = color.neutralCard;
   }
-
-  const emojiSize = compact ? 20 : 40;
-  const titleSize = compact ? 13 : 18;
-  const timeSize = compact ? 10 : 13;
-  const stackSize = compact ? 14 : 26;
 
   return (
     <div
@@ -31,26 +28,26 @@ export default function ActivityStripCard({ event, members, compact = false }) {
         ...style,
         height: '100%',
         boxSizing: 'border-box',
-        padding: compact ? '0 10px' : '0 18px',
+        padding: '0 clamp(10px, 2.2cqw, 18px)',
         display: 'flex',
         alignItems: 'center',
-        gap: compact ? 8 : 16,
+        gap: 'clamp(8px, 2cqw, 16px)',
         minWidth: 0,
       }}
     >
-      <div style={{ font: `400 ${emojiSize}px/1 ${font.emoji}`, flex: 'none' }}>{event.icon}</div>
+      <div style={{ font: `400 clamp(20px, 4.5cqw, 40px)/1 ${font.emoji}`, flex: 'none' }}>{event.icon}</div>
 
       {bg.type === 'neutral-stack' && (
-        <div style={{ display: 'flex', alignItems: 'center', flex: 'none' }}>
+        <div style={{ display: 'flex', alignItems: 'center', flex: 'none', '--stack-size': 'clamp(14px, 2.8cqw, 26px)' }}>
           {bg.memberIds.map((id, i) => {
             const m = members.find((mm) => mm.id === id);
             return (
               <div
                 key={id}
                 style={{
-                  width: stackSize, height: stackSize, borderRadius: '50%', background: m?.calendar_color ?? color.neutralCard,
-                  marginLeft: i === 0 ? 0 : -stackSize * 0.35, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: `0 0 0 2px ${color.surface}`, fontSize: stackSize * 0.55,
+                  width: 'var(--stack-size)', height: 'var(--stack-size)', borderRadius: '50%', background: m?.calendar_color ?? color.neutralCard,
+                  marginLeft: i === 0 ? 0 : 'calc(var(--stack-size) * -0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: `0 0 0 2px ${color.surface}`, fontSize: 'calc(var(--stack-size) * 0.55)',
                 }}
               >
                 {m?.kid_icon}
@@ -65,14 +62,14 @@ export default function ActivityStripCard({ event, members, compact = false }) {
       <div style={{ textAlign: 'right', minWidth: 0 }}>
         <div
           style={{
-            font: `${weight.heavy} ${titleSize}px/1.15 Nunito, sans-serif`, color: '#fff',
+            font: `${weight.heavy} clamp(13px, 2cqw, 18px)/1.15 Nunito, sans-serif`, color: '#fff',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}
         >
           {event.title}
         </div>
         {time && (
-          <div style={{ font: `${weight.bold} ${timeSize}px/1.3 Nunito, sans-serif`, color: 'rgba(255,255,255,.85)', whiteSpace: 'nowrap' }}>
+          <div style={{ font: `${weight.bold} clamp(10px, 1.4cqw, 13px)/1.3 Nunito, sans-serif`, color: 'rgba(255,255,255,.85)', whiteSpace: 'nowrap' }}>
             {time}
           </div>
         )}

@@ -49,7 +49,10 @@ export default function TomorrowBoardPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: color.page }}>
+    // containerType: 'size' + a definite height (not just minHeight) is
+    // what lets TomorrowBoard.jsx's cqw/cqh values react to the real
+    // screen size here — see that file's own comment for the full picture.
+    <div style={{ height: '100vh', background: color.page, containerType: 'size' }}>
       <TomorrowBoard members={data.members} events={data.events} showGear={<SettingsGear />} />
     </div>
   );
