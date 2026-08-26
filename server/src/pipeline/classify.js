@@ -59,7 +59,11 @@ export function formatDateTime(date, time) {
 export function confirmReply(candidate) {
   const when = formatDateTime(candidate.date, candidate.time);
   const title = candidate.title || 'Event';
-  return `${title}, ${when} — added ✅`;
+  // Echo the end time back when one was given, so a duration/range being
+  // correctly captured (or not) is visible in the confirmation itself,
+  // not just in the Calendar event a person has to go check separately.
+  const range = candidate.end_time ? `${when}–${candidate.end_time}` : when;
+  return `${title}, ${range} — added ✅`;
 }
 
 export function qualifyReply(candidate) {

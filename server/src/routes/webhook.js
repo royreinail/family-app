@@ -38,7 +38,22 @@ export function webhookRouter() {
       const change = entry?.changes?.[0]?.value;
       const phoneNumberId = change?.metadata?.phone_number_id;
       const message = change?.messages?.[0];
-      if (!phoneNumberId || !message) return;
+      if (!phoneNumberId || !message) {
+        // Meta posts more than just messages to this same URL — delivery
+        // and read-receipt status callbacks are routine and fine to skip
+        // silently. But this exact `return` used to skip *everything* that
+        // didn't parse with zero logging, which was the only thing standing
+        // between "Meta never called us" and "Meta called us with a shape
+        // we didn't handle" for two real messages that got no response at
+        // all during live testing (no trace of either exists to check now —
+        // this is so the next one is actually diagnosable).
+        if (!change?.statuses) {
+          console.warn(
+            `Webhook: unparseable payload — phoneNumberId=${phoneNumberId ?? 'missing'} hasMessages=${!!change?.messages} changeKeys=${change ? Object.keys(change).join(',') : 'none (no entry/changes/value at all)'}`
+          );
+        }
+        return;
+      }
 
       const botConfig = await botConfigRepo.findByPhoneNumberId(phoneNumberId);
       if (!botConfig) {
@@ -88,7 +103,18 @@ export function webhookRouter() {
           replyToExtractionLogId,
         },
         {
-          llmExtract: (raw) => llmIntegration.extract(raw, { referenceDate: todayInTimeZone(timeZone), image }),
+          llmExtract: (raw) =>
+            llmIntegration.extract(raw, {
+              referenceDate: todayInTimeZone(timeZone),
+              image,
+              // Fixes a real bug: a message naming a real family member
+              // ("Shopping with Shai") had no way to be recognized as
+              // referring to her specifically — the LLM had never been told
+              // who the family's members even are, so the name just stayed
+              // part of the free-text title instead of resolving to
+              // `person` (which is what color-matching keys off of).
+              familyMemberNames: familyMembers.map((m) => m.name),
+            }),
           calendar: {
             createEvent: (evt) => calendarIntegration.createEvent(credentials, evt),
             updateEvent: (id, patch) => calendarIntegration.updateEvent(credentials, id, patch),

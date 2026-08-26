@@ -11,7 +11,11 @@ const EXTRACTION_TOOL = {
     properties: {
       title: { type: ['string', 'null'] },
       date: { type: ['string', 'null'], description: 'ISO 8601 date, e.g. 2026-08-20' },
-      time: { type: ['string', 'null'], description: '24h HH:MM, e.g. 16:00' },
+      time: { type: ['string', 'null'], description: '24h HH:MM start time, e.g. 16:00' },
+      end_time: {
+        type: ['string', 'null'],
+        description: '24h HH:MM — set ONLY when the message gives an explicit end time or a time range (e.g. "9:00-18:00", "3pm to 5pm", "2-4pm"). Leave null for a single point-in-time event; a sensible default duration is applied downstream when this is null.',
+      },
       person: { type: ['string', 'null'] },
       category: { type: ['string', 'null'] },
       reminder_requested: { type: 'boolean' },
@@ -27,7 +31,7 @@ const EXTRACTION_TOOL = {
         description: "Best-matching activity category, regardless of what language the message is in — used to pick a suitable icon (e.g. a dance class gets a dancer, a birthday gets a cake) without relying on an English keyword appearing in the text. Use 'other' only when nothing else genuinely fits.",
       },
     },
-    required: ['title', 'date', 'time', 'person', 'category', 'reminder_requested', 'reminder_datetime', 'audience', 'activity_category'],
+    required: ['title', 'date', 'time', 'end_time', 'person', 'category', 'reminder_requested', 'reminder_datetime', 'audience', 'activity_category'],
   },
 };
 
@@ -46,10 +50,25 @@ pick whichever one the activity actually is (a dance class is 'dance', a birthda
 'birthday', a grocery run is 'shopping', etc.), independent of what language the message is
 written in; use 'other' only when nothing genuinely fits.`;
 
+// Exported (unlike the actual API call, which is never unit-tested — same
+// reasoning as dashboard.js's real Calendar API calls) since this part is
+// pure and worth covering directly: it's the actual fix for a real bug
+// (family member names never reaching the LLM at all).
+export function buildSystemPrompt(familyMemberNames) {
+  if (!familyMemberNames?.length) return SYSTEM_PROMPT;
+  return `${SYSTEM_PROMPT}
+
+Known family members: ${familyMemberNames.join(', ')}. If the message clearly refers to one of
+them (in any language — a name doesn't change across languages), set \`person\` to their exact
+name as listed here, not however it happened to appear in the message. When \`person\` already
+captures who the event is for, keep \`title\` focused on the activity itself rather than repeating
+their name in it (e.g. prefer "Shopping" over "Shopping with Shai" when person is "Shai").`;
+}
+
 /**
  * @param {string} rawInput - message text, or a caption/empty string when `opts.image` is set
- * @param {{referenceDate?: string, model?: string, image?: {base64: string, mimeType: string}}} [opts]
- * @returns {Promise<{title:string|null,date:string|null,time:string|null,person:string|null,category:string|null,reminder_requested:boolean,reminder_datetime:string|null,audience:'family'|'parent_only',activity_category:string}>}
+ * @param {{referenceDate?: string, model?: string, image?: {base64: string, mimeType: string}, familyMemberNames?: string[]}} [opts]
+ * @returns {Promise<{title:string|null,date:string|null,time:string|null,end_time:string|null,person:string|null,category:string|null,reminder_requested:boolean,reminder_datetime:string|null,audience:'family'|'parent_only',activity_category:string}>}
  */
 export async function extract(rawInput, opts = {}) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -77,7 +96,7 @@ export async function extract(rawInput, opts = {}) {
     body: JSON.stringify({
       model,
       max_tokens: 512,
-      system: SYSTEM_PROMPT,
+      system: buildSystemPrompt(opts.familyMemberNames),
       messages: [{ role: 'user', content }],
       tools: [EXTRACTION_TOOL],
       tool_choice: { type: 'tool', name: 'record_extraction' },

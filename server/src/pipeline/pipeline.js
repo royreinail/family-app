@@ -18,6 +18,7 @@ import {
   clarifyReply,
   reminderConfirmReply,
   addOneHour,
+  addDays,
   todayInTimeZone,
   overrideObviousRelativeDate,
   overrideExplicitAudienceKeyword,
@@ -119,7 +120,15 @@ export async function handleIncomingMessage(message, deps) {
   let result;
   if (action.type === 'write_calendar') {
     const routing = await evaluateRules('assessment', 'event_task_routing', facts, { familyId, pool });
-    const end = addOneHour(candidate.date, candidate.time);
+    // A message giving an explicit end time or range ("9:00-18:00") gets
+    // that real duration instead of always defaulting to 1 hour — a real
+    // bug: "Commanders Day 9:00-18:00" was landing as a 9:00-10:00 event.
+    // end_time earlier than (or equal to) the start time means it rolls
+    // past midnight (e.g. "9pm-1am") — roll the end date forward a day
+    // rather than landing before the event even starts.
+    const end = candidate.end_time
+      ? { date: candidate.end_time <= candidate.time ? addDays(candidate.date, 1) : candidate.date, time: candidate.end_time }
+      : addOneHour(candidate.date, candidate.time);
     const colorId = resolveEventColorId(candidate.person, familyMembers);
     const eventRef = await calendar.createEvent({
       title: candidate.title || 'Untitled event',
