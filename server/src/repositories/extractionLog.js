@@ -83,3 +83,28 @@ export async function findLatestWrittenBySender({ familyId, senderIdentifier }, 
   );
   return rows[0] ?? null;
 }
+
+// Item 6 — most recent event actually written to Calendar for this
+// sender, within a short window — backs the *bare* (no-quote) person-
+// correction path ("actually for Theo") the same way findRecentPendingFollowUp
+// backs the bare time-answer path. Kept tight (10 min default, vs. the
+// 12h window for a pending time question) on purpose: an unquoted name
+// mentioned much later is far more likely to be an unrelated new message
+// than a live correction of a specific past event. Recency bounded in JS,
+// same pg-mem reasoning as findRecentPendingFollowUp.
+export async function findRecentWrittenCalendarEventBySender(
+  { familyId, senderIdentifier, withinMs = 10 * 60 * 1000 },
+  pool = getPool()
+) {
+  const { rows } = await pool.query(
+    `select * from extraction_log
+     where family_id = $1 and sender_identifier = $2 and deleted_at is null
+       and state = 'written'
+     order by created_at desc limit 1`,
+    [familyId, senderIdentifier]
+  );
+  const row = rows[0];
+  if (!row || row.resulting_event_ref?.provider !== 'google') return null;
+  const ageMs = Date.now() - new Date(row.updated_at).getTime();
+  return ageMs <= withinMs ? row : null;
+}

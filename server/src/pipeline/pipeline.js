@@ -21,6 +21,9 @@ import {
   todayInTimeZone,
   overrideObviousRelativeDate,
   overrideExplicitAudienceKeyword,
+  applyForwardedSenderDefault,
+  matchBarePersonCorrection,
+  resolveEventColorId,
   calendarPayloadFromCandidate,
   localDateTimeToUtcIso,
 } from './classify.js';
@@ -48,15 +51,17 @@ async function withRetry(fn, { attempts = 3, baseDelayMs = 200 } = {}) {
  * @param {string} message.senderIdentifier
  * @param {string} message.text
  * @param {string} [message.replyToExtractionLogId] - set when this message is a reply/quote to a prior bot confirmation
+ * @param {boolean} [message.wasForwarded] - Meta's own message.context.forwarded flag (item 6)
  * @param {object} deps - injected boundary implementations (production wiring in routes/webhook.js, fakes in tests)
  * @param {import('pg').Pool} deps.pool
  * @param {(rawInput: string) => Promise<object>} deps.llmExtract
  * @param {{createEvent: Function, updateEvent: Function, deleteEvent: Function}} deps.calendar - already family-scoped
  * @param {{send: Function}} deps.messenger
+ * @param {object} [deps.senderFamilyMember] - the family member mapped to this sender's number, if any (item 6's forwarded-default target)
  */
 export async function handleIncomingMessage(message, deps) {
-  const { familyId, externalMessageId, senderIdentifier, text, replyToExtractionLogId } = message;
-  const { pool, llmExtract, calendar, messenger, timeZone = 'UTC', familyMembers = [] } = deps;
+  const { familyId, externalMessageId, senderIdentifier, text, replyToExtractionLogId, wasForwarded } = message;
+  const { pool, llmExtract, calendar, messenger, timeZone = 'UTC', familyMembers = [], senderFamilyMember = null } = deps;
 
   // 1. Write-ahead log — the instant the "webhook fires", before anything else.
   const log = await extractionLogRepo.create(
@@ -116,6 +121,25 @@ export async function handleIncomingMessage(message, deps) {
     }
   }
 
+  // 3c. Person-correction-answer path — item 6: "actually for Theo" fixes
+  // who a recently-written event is for, including reversing a forwarded-
+  // sender assumption (3d/applyForwardedSenderDefault below). Bounded to a
+  // short window (findRecentWrittenCalendarEventBySender's default 10 min)
+  // since an unquoted name mentioned much later is far more likely to be
+  // unrelated than a live correction. Can't overlap with the bare-time-
+  // answer branch above by construction (one requires a time, the other a
+  // family member's name, and matchBarePersonCorrection demands the
+  // *entire* message reduce to just that name).
+  if (!replyToExtractionLogId) {
+    const personMatch = matchBarePersonCorrection(text, familyMembers);
+    if (personMatch) {
+      const recentWritten = await extractionLogRepo.findRecentWrittenCalendarEventBySender({ familyId, senderIdentifier }, pool);
+      if (recentWritten) {
+        return applyPersonCorrection({ log, original: recentWritten, matchedMember: personMatch, calendar, messenger, senderIdentifier, pool });
+      }
+    }
+  }
+
   // 4. LLM extraction — the LLM's one job, wrapped for transient failures.
   let candidate;
   try {
@@ -133,6 +157,11 @@ export async function handleIncomingMessage(message, deps) {
   // over the LLM's own audience read; see classify.js for why there's no
   // opposite override (default is already 'family').
   candidate = overrideExplicitAudienceKeyword(text, candidate);
+  // 3d. Item 6 — a forwarded message with no clear person defaults to
+  // whoever forwarded it (marked as an assumption, not silent — see
+  // qualifyReply/confirmReply). No-op for a message the sender typed
+  // directly, or one that already names a real family member.
+  candidate = applyForwardedSenderDefault(candidate, { wasForwarded, senderFamilyMember, familyMembers });
   await extractionLogRepo.updateState(log.id, { state: 'extracted', aiCandidate: candidate }, pool);
 
   // 5. Assessment rules — act on the LLM's structured output.
@@ -273,6 +302,19 @@ async function handleCorrection({ log, replyToExtractionLogId, text, calendar, m
     });
   }
 
+  // Item 6 — a quoted reply naming a family member corrects who a
+  // recently-written event is for (same 10-minute-style window as the
+  // no-quote path — see applyPersonCorrection's caller in 3c above for the
+  // reasoning; a quote arriving long after the fact is unusual enough to
+  // leave the old, probably-forgotten event alone rather than recolor it).
+  const personMatch = matchBarePersonCorrection(text, familyMembers);
+  if (personMatch && original.state === 'written' && original.resulting_event_ref?.provider === 'google') {
+    const ageMs = Date.now() - new Date(original.updated_at).getTime();
+    if (ageMs <= 10 * 60 * 1000) {
+      return applyPersonCorrection({ log, original, matchedMember: personMatch, calendar, messenger, senderIdentifier, pool });
+    }
+  }
+
   const updatedCandidate = { ...original.ai_candidate, ...(newTime ? { time: newTime } : {}) };
 
   const ref = original.resulting_event_ref;
@@ -293,6 +335,25 @@ async function handleCorrection({ log, replyToExtractionLogId, text, calendar, m
   await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
 
   const reply = `Updated — ${updatedCandidate.title || 'that'} now at ${newTime || updatedCandidate.time}.`;
+  await messenger.send(senderIdentifier, reply);
+  return { outcome: 'corrected', original, updatedCandidate, reply, log };
+}
+
+// Item 6 — shared by both person-correction routes (a bare "actually for
+// Theo" follow-up in step 3c, and a quoted reply naming someone else in
+// handleCorrection): patches the already-written Calendar event's color to
+// the new person (resolveEventColorId keyed off just the matched member,
+// so it always resolves — no ambiguity risk the way a free-text `person`
+// string could have) and updates the stored candidate so any further
+// correction or "undo" still has the right picture. Clears personAssumed
+// — once explicitly corrected, it's a stated fact, not a guess anymore.
+async function applyPersonCorrection({ log, original, matchedMember, calendar, messenger, senderIdentifier, pool }) {
+  const updatedCandidate = { ...original.ai_candidate, person: matchedMember.name, personAssumed: false };
+  const ref = original.resulting_event_ref;
+  await calendar.updateEvent(ref.external_id, { colorId: resolveEventColorId(matchedMember.name, [matchedMember]) });
+  await extractionLogRepo.updateState(original.id, { state: 'corrected', aiCandidate: updatedCandidate }, pool);
+  await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+  const reply = `Updated — that's now for ${matchedMember.name} ✅`;
   await messenger.send(senderIdentifier, reply);
   return { outcome: 'corrected', original, updatedCandidate, reply, log };
 }

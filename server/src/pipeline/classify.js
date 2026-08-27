@@ -6,17 +6,66 @@
 import { hexToColorId, DEFAULT_COLOR_ID } from '../integrations/googleColors.js';
 import { ACTIVITY_CATEGORIES } from '../integrations/activityCategories.js';
 
-// Matches the extracted `person` string against real family members so the
-// Calendar event can carry that person's actual assigned color. Anything
-// short of exactly one confident match — nobody named, several people
-// named, no match at all — deliberately falls back to one default color
-// rather than guessing which person was meant.
-export function resolveEventColorId(personName, familyMembers) {
-  if (!personName || !familyMembers?.length) return DEFAULT_COLOR_ID;
-  const needle = personName.toLowerCase();
+// Matches a free-text string against real family members. Anything short
+// of exactly one confident match — nobody named, several people named, no
+// match at all — deliberately returns null rather than guessing which
+// person was meant. Shared by color resolution and item 6's person-
+// correction matching so "who does this name refer to" is answered
+// exactly one way everywhere.
+export function matchSingleFamilyMember(text, familyMembers) {
+  if (!text || !familyMembers?.length) return null;
+  const needle = text.toLowerCase();
   const matches = familyMembers.filter((m) => needle.includes(m.name.toLowerCase()));
-  if (matches.length !== 1) return DEFAULT_COLOR_ID;
-  return hexToColorId(matches[0].calendar_color);
+  return matches.length === 1 ? matches[0] : null;
+}
+
+// The Calendar event's color follows whichever real family member the
+// extracted `person` confidently matches; falls back to one default color
+// rather than guessing.
+export function resolveEventColorId(personName, familyMembers) {
+  const match = matchSingleFamilyMember(personName, familyMembers);
+  return match ? hexToColorId(match.calendar_color) : DEFAULT_COLOR_ID;
+}
+
+// Item 6 — a forwarded message often doesn't say who it's for (it wasn't
+// written to the bot directly, so the sender's own context is missing).
+// When the extracted `person` doesn't confidently match a real family
+// member, default to whoever forwarded it — but only for messages Meta
+// itself flags as forwarded (message.context.forwarded, threaded through
+// from webhook.js), never for something the sender typed directly: most
+// captured events are about a kid, not the parent doing the typing, so
+// defaulting to "the sender" for an ordinary typed message would be wrong
+// far more often than right. The assumption is marked (`personAssumed`),
+// not silent — confirmReply/qualifyReply state it explicitly, and
+// pipeline.js's person-correction paths can override it.
+export function applyForwardedSenderDefault(candidate, { wasForwarded, senderFamilyMember, familyMembers }) {
+  if (!wasForwarded || !senderFamilyMember) return candidate;
+  if (matchSingleFamilyMember(candidate.person, familyMembers)) return candidate; // already resolves to someone real
+  return { ...candidate, person: senderFamilyMember.name, personAssumed: true };
+}
+
+// Item 6 — recognizes a short follow-up ("actually for Theo", "change it
+// to Mia", "לא, זה בשביל תיאו") naming a different family member, so a
+// wrongly-assumed (or simply wrong) person can be corrected after the
+// fact — whether sent as a bare next message or a quoted reply (see
+// pipeline.js for both call sites). Deliberately strict, same spirit as
+// commands.js's isBareTimeAnswer: a genuinely new request that happens to
+// mention a family member's name elsewhere ("Dance class for Mia Friday")
+// must still go through normal extraction, not get swallowed as a
+// correction to something else entirely.
+const PERSON_CORRECTION_FILLER = /\b(for|actually|it's|its|it|change|to|that's|thats|instead|please|not|this|is)\b/gi;
+const PERSON_CORRECTION_FILLER_HE = /עבור|במקום|זה|זאת|בשביל|תשני|תשנה|לא|בעצם/g;
+export function matchBarePersonCorrection(text, familyMembers) {
+  const raw = (text || '').trim();
+  const match = matchSingleFamilyMember(raw, familyMembers);
+  if (!match) return null;
+  const residue = raw
+    .toLowerCase()
+    .replace(match.name.toLowerCase(), ' ')
+    .replace(PERSON_CORRECTION_FILLER, ' ')
+    .replace(PERSON_CORRECTION_FILLER_HE, ' ')
+    .replace(/[\s,.\-–—:;!?"'()[\]]/g, '');
+  return residue.length === 0 ? match : null;
 }
 
 // Icon fallback for when the free English-keyword match (activityIcons.js's
@@ -85,6 +134,16 @@ export function formatDateTime(date, time) {
   return `${date} ${time}`;
 }
 
+// Item 6 — stated only when the person was *assumed* (from whoever
+// forwarded the message), never for a person the message actually named —
+// that case already reads fine without narration, and always mentioning
+// who an event is for would be a much bigger, unrequested wording change.
+function assumedPersonNote(candidate) {
+  return candidate.personAssumed && candidate.person
+    ? ` for ${candidate.person} (assumed, since you forwarded this — reply to change who it's for)`
+    : '';
+}
+
 export function confirmReply(candidate) {
   const when = formatDateTime(candidate.date, candidate.time);
   const title = candidate.title || 'Event';
@@ -92,12 +151,12 @@ export function confirmReply(candidate) {
   // correctly captured (or not) is visible in the confirmation itself,
   // not just in the Calendar event a person has to go check separately.
   const range = candidate.end_time ? `${when}–${candidate.end_time}` : when;
-  return `${title}, ${range} — added ✅`;
+  return `${title}, ${range}${assumedPersonNote(candidate)} — added ✅`;
 }
 
 export function qualifyReply(candidate) {
   const title = candidate.title || 'This';
-  return `Got it — ${title} on ${candidate.date}. What time?`;
+  return `Got it — ${title} on ${candidate.date}${assumedPersonNote(candidate)}. What time?`;
 }
 
 export function clarifyReply() {

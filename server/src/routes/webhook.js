@@ -8,6 +8,7 @@ import * as googleCredentialsRepo from '../repositories/googleCredentials.js';
 import * as familiesRepo from '../repositories/families.js';
 import * as familyMembersRepo from '../repositories/familyMembers.js';
 import * as extractionLogRepo from '../repositories/extractionLog.js';
+import * as sourceMappingsRepo from '../repositories/sourceMappings.js';
 import { handleIncomingMessage } from '../pipeline/pipeline.js';
 import { todayInTimeZone } from '../pipeline/classify.js';
 import * as calendarIntegration from '../integrations/calendar.js';
@@ -84,6 +85,9 @@ export function webhookRouter() {
       let text = message.text?.body || message.button?.text || '';
       const senderIdentifier = message.from;
       const replyContextId = message.context?.id ?? null;
+      // Item 6 — Meta's own signal for "this message was forwarded from
+      // elsewhere," distinct from context.id (reply/quote metadata) above.
+      const wasForwarded = message.context?.forwarded === true;
 
       // Forwarded photos (flyers, schedules) are a Phase 1 intake channel —
       // WhatsApp sends the image as a media ID, not inline bytes.
@@ -136,6 +140,19 @@ export function webhookRouter() {
       const family = await familiesRepo.findById(botConfig.family_id);
       const familyMembers = await familyMembersRepo.findAllForFamily(botConfig.family_id);
       const timeZone = family?.timezone || 'UTC';
+
+      // Item 6 — which real family member owns the sender's own number, if
+      // any (the target of the "assume it's for whoever forwarded this"
+      // default, applied downstream only when the message actually was
+      // forwarded and doesn't already name someone).
+      const senderMapping = await sourceMappingsRepo.findByIdentifier({
+        familyId: botConfig.family_id,
+        channelType: 'whatsapp',
+        externalIdentifier: senderIdentifier,
+      });
+      const senderFamilyMember = senderMapping
+        ? familyMembers.find((m) => m.id === senderMapping.family_member_id) ?? null
+        : null;
       console.log(
         `Webhook: family=${botConfig.family_id} sender=${senderIdentifier} text=${JSON.stringify(text)} hasImage=${!!image} hasCalendarCreds=${!!credentials}`
       );
@@ -147,6 +164,7 @@ export function webhookRouter() {
           senderIdentifier,
           text,
           replyToExtractionLogId,
+          wasForwarded,
         },
         {
           llmExtract: (raw) =>
@@ -169,6 +187,7 @@ export function webhookRouter() {
           messenger: { send: (to, msg) => messengerIntegration.send(to, msg) },
           timeZone,
           familyMembers,
+          senderFamilyMember,
         }
       );
       console.log(
