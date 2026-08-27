@@ -47,3 +47,26 @@ export function parseCorrectedTime(text) {
   if (hour > 23 || minute > 59) return null;
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
+
+// True when the whole message is just an answer to the bot's "What time?"
+// follow-up — "8:30", "at 8:30am", "8:30 בבוקר" — and nothing else. Used to
+// decide whether an incoming message should be merged into a parked
+// `needs_time` event (keeping its title/date/person) rather than parsed
+// fresh. Deliberately strict: a standalone request that merely contains a
+// time ("Dentist tomorrow 9am") must still go through normal extraction, so
+// anything left over after removing the time and a small filler vocabulary
+// disqualifies it.
+export function isBareTimeAnswer(text) {
+  const raw = (text || '').trim();
+  if (!raw || !parseCorrectedTime(raw)) return false;
+  const residue = raw
+    .replace(/\d{1,2}(?::\d{2})?/g, ' ') // the digits of the time itself
+    .replace(/\b[ap]\.?m\.?\b/gi, ' ') // am / pm / a.m. / p.m.
+    .replace(
+      /\b(at|around|about|approx|by|from|starts?|start|time|in|the|on|o'?clock|morning|afternoon|evening|noon|midday|midnight|tonight|today)\b/gi,
+      ' '
+    )
+    .replace(/בשעה|בבוקר|בבקר|אחה"?צ|בצהריי?ם|בערב|בלילה|בסביבות|בערך|ב['׳]?/g, ' ') // common Hebrew time filler
+    .replace(/[\s,.\-–—:;!?"'()[\]]/g, '');
+  return residue.length === 0;
+}

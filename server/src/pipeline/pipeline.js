@@ -10,7 +10,7 @@ import * as extractionLogRepo from '../repositories/extractionLog.js';
 import * as tasksRepo from '../repositories/tasks.js';
 import * as botConfigRepo from '../repositories/botConfig.js';
 import { evaluateRules } from '../rules/engine.js';
-import { matchCommand, helpReply, formatTaskList, parseCorrectedTime } from './commands.js';
+import { matchCommand, helpReply, formatTaskList, parseCorrectedTime, isBareTimeAnswer } from './commands.js';
 import {
   factsFromCandidate,
   confirmReply,
@@ -18,11 +18,10 @@ import {
   clarifyReply,
   reminderConfirmReply,
   addOneHour,
-  addDays,
   todayInTimeZone,
   overrideObviousRelativeDate,
   overrideExplicitAudienceKeyword,
-  resolveEventColorId,
+  calendarPayloadFromCandidate,
   localDateTimeToUtcIso,
 } from './classify.js';
 import { scheduleReminder } from './reminders.js';
@@ -67,7 +66,7 @@ export async function handleIncomingMessage(message, deps) {
 
   // 2. Correction-reply path — not a command, not a rule match.
   if (replyToExtractionLogId) {
-    return handleCorrection({ log, replyToExtractionLogId, text, calendar, messenger, senderIdentifier, pool, timeZone });
+    return handleCorrection({ log, replyToExtractionLogId, text, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers });
   }
 
   // 2b. Commands check — hardcoded, before gate rules, before any LLM call.
@@ -90,6 +89,31 @@ export async function handleIncomingMessage(message, deps) {
   if (gateResult.matched && gateResult.action.type === 'stop_silent') {
     await extractionLogRepo.updateState(log.id, { state: 'stopped', firedRule: gateResult.rule.name }, pool);
     return { outcome: 'stopped', reason: gateResult.action.reason, rule: gateResult.rule, log };
+  }
+
+  // 3b. Follow-up-answer path — the bot previously asked this sender
+  // "What time?" and left a fully-parsed event parked in `needs_time`
+  // (title, resolved date, person all already known). A bare reply like
+  // "8:30" is the answer to THAT question: merge the time into the parked
+  // candidate and promote it to the calendar, rather than sending the
+  // fragment through extraction from scratch — which drops the title, the
+  // already-resolved relative date, and the person. Runs after the gate so
+  // a Meta retry of the same "8:30" is still caught by duplicate_message.
+  if (!replyToExtractionLogId && isBareTimeAnswer(text)) {
+    const pending = await extractionLogRepo.findRecentPendingFollowUp({ familyId, senderIdentifier }, pool);
+    if (pending) {
+      return promotePendingEventWithTime({
+        log,
+        pending,
+        newTime: parseCorrectedTime(text),
+        calendar,
+        messenger,
+        senderIdentifier,
+        pool,
+        timeZone,
+        familyMembers,
+      });
+    }
   }
 
   // 4. LLM extraction — the LLM's one job, wrapped for transient failures.
@@ -120,31 +144,7 @@ export async function handleIncomingMessage(message, deps) {
   let result;
   if (action.type === 'write_calendar') {
     const routing = await evaluateRules('assessment', 'event_task_routing', facts, { familyId, pool });
-    // A message giving an explicit end time or range ("9:00-18:00") gets
-    // that real duration instead of always defaulting to 1 hour — a real
-    // bug: "Commanders Day 9:00-18:00" was landing as a 9:00-10:00 event.
-    // end_time earlier than (or equal to) the start time means it rolls
-    // past midnight (e.g. "9pm-1am") — roll the end date forward a day
-    // rather than landing before the event even starts.
-    const end = candidate.end_time
-      ? { date: candidate.end_time <= candidate.time ? addDays(candidate.date, 1) : candidate.date, time: candidate.end_time }
-      : addOneHour(candidate.date, candidate.time);
-    const colorId = resolveEventColorId(candidate.person, familyMembers);
-    const eventRef = await calendar.createEvent({
-      title: candidate.title || 'Untitled event',
-      startDateTime: `${candidate.date}T${candidate.time}:00`,
-      endDateTime: `${end.date}T${end.time}:00`,
-      timeZone,
-      colorId,
-      // Fixtures/candidates from before this field existed have no
-      // audience at all — default to 'family' (visible), never silently
-      // hide an event because the field happens to be missing.
-      audience: candidate.audience || 'family',
-      // Same story for candidates predating this field — omit rather than
-      // pass an invalid category through; the dashboard's own fallback
-      // (iconForCategory) already treats "nothing to match" as 📌.
-      activityCategory: candidate.activity_category || undefined,
-    });
+    const eventRef = await calendar.createEvent(calendarPayloadFromCandidate(candidate, { familyMembers, timeZone }));
     await extractionLogRepo.updateState(
       log.id,
       { state: 'written', resultingEventRef: eventRef, firedRule: firedRuleName },
@@ -253,7 +253,7 @@ async function handleCommand({ command, log, familyId, senderIdentifier, calenda
   return { outcome: 'unknown_command', log };
 }
 
-async function handleCorrection({ log, replyToExtractionLogId, text, calendar, messenger, senderIdentifier, pool, timeZone }) {
+async function handleCorrection({ log, replyToExtractionLogId, text, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers = [] }) {
   const original = await extractionLogRepo.findById(replyToExtractionLogId, pool);
   if (!original) {
     await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
@@ -262,6 +262,17 @@ async function handleCorrection({ log, replyToExtractionLogId, text, calendar, m
   }
 
   const newTime = parseCorrectedTime(text);
+
+  // Quote-replying a time to the bot's own "What time?" question is not a
+  // correction of an existing event — it's the missing piece of a parked
+  // one. Same promotion as the no-quote follow-up path (3b): merge the
+  // time in, create the real calendar event, retire the tentative task.
+  if (original.state === 'needs_time' && newTime) {
+    return promotePendingEventWithTime({
+      log, pending: original, newTime, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers,
+    });
+  }
+
   const updatedCandidate = { ...original.ai_candidate, ...(newTime ? { time: newTime } : {}) };
 
   const ref = original.resulting_event_ref;
@@ -284,4 +295,30 @@ async function handleCorrection({ log, replyToExtractionLogId, text, calendar, m
   const reply = `Updated — ${updatedCandidate.title || 'that'} now at ${newTime || updatedCandidate.time}.`;
   await messenger.send(senderIdentifier, reply);
   return { outcome: 'corrected', original, updatedCandidate, reply, log };
+}
+
+// Shared tail of both follow-up routes (no-quote "8:30" in step 3b, and a
+// quote-reply of a time to "What time?" in handleCorrection): the parked
+// `needs_time` candidate already carries the title, the resolved date and
+// the person — all we add is the time. Then it graduates from a tentative
+// task to a real calendar event, and the placeholder task the date-only
+// branch created is retired so it doesn't linger in "list tasks".
+async function promotePendingEventWithTime({ log, pending, newTime, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers = [] }) {
+  const candidate = { ...pending.ai_candidate, time: newTime };
+
+  const parkedTask = await tasksRepo.findBySourceExtractionLogId(pending.id, pool);
+  if (parkedTask) await tasksRepo.softDelete(parkedTask.id, pool);
+
+  const eventRef = await calendar.createEvent(calendarPayloadFromCandidate(candidate, { familyMembers, timeZone }));
+
+  await extractionLogRepo.updateState(
+    pending.id,
+    { state: 'written', aiCandidate: candidate, resultingEventRef: eventRef, firedRule: 'follow_up_answer' },
+    pool
+  );
+  await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+
+  const reply = confirmReply(candidate);
+  await messenger.send(senderIdentifier, reply);
+  return { outcome: 'written', destination: 'calendar', eventRef, reply, promotedFrom: pending.id, retiredTaskId: parkedTask?.id ?? null, log };
 }

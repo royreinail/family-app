@@ -48,6 +48,30 @@ export async function findByExternalId({ familyId, externalMessageId }, pool = g
   return rows[0] ?? null;
 }
 
+// Most recent unresolved follow-up from this sender — the bot asked
+// "What time?" and parked a partial event in `needs_time`, and we're now
+// deciding whether an incoming message is the answer to merge back into
+// that parked candidate (vs. a brand-new request). Recency-bounded in JS
+// rather than SQL (`interval` arithmetic isn't reliable under pg-mem in
+// tests): a "8:30" typed hours after the question, with unrelated messages
+// in between, shouldn't silently attach to a stale event.
+export async function findRecentPendingFollowUp(
+  { familyId, senderIdentifier, withinMs = 12 * 60 * 60 * 1000 },
+  pool = getPool()
+) {
+  const { rows } = await pool.query(
+    `select * from extraction_log
+     where family_id = $1 and sender_identifier = $2 and deleted_at is null
+       and state = 'needs_time'
+     order by created_at desc limit 1`,
+    [familyId, senderIdentifier]
+  );
+  const row = rows[0];
+  if (!row) return null;
+  const ageMs = Date.now() - new Date(row.created_at).getTime();
+  return ageMs <= withinMs ? row : null;
+}
+
 // Most recent successful write (event or task) from this sender — used by "undo".
 export async function findLatestWrittenBySender({ familyId, senderIdentifier }, pool = getPool()) {
   const { rows } = await pool.query(

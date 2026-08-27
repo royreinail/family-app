@@ -50,6 +50,35 @@ function isReminderOnlyMessage(candidate) {
   return candidate.reminder_datetime.startsWith(`${candidate.date}T${candidate.time}`);
 }
 
+// The Calendar `createEvent` payload for a candidate whose date AND time
+// are both known. Shared by the normal write_calendar branch and the
+// follow-up-answer branch (a `needs_time` event promoted once its time
+// finally arrives) so the two can never drift — an earlier bug was one
+// path getting end-time/duration handling that the other missed.
+export function calendarPayloadFromCandidate(candidate, { familyMembers = [], timeZone = 'UTC' } = {}) {
+  // A message giving an explicit end time or range ("9:00-18:00") keeps
+  // that real duration instead of the 1-hour default (a real bug once had
+  // "Commanders Day 9:00-18:00" landing as 9:00-10:00). An end at or before
+  // the start rolls past midnight (e.g. "9pm-1am") — roll the end date
+  // forward a day rather than landing before the event even starts.
+  const end = candidate.end_time
+    ? { date: candidate.end_time <= candidate.time ? addDays(candidate.date, 1) : candidate.date, time: candidate.end_time }
+    : addOneHour(candidate.date, candidate.time);
+  return {
+    title: candidate.title || 'Untitled event',
+    startDateTime: `${candidate.date}T${candidate.time}:00`,
+    endDateTime: `${end.date}T${end.time}:00`,
+    timeZone,
+    colorId: resolveEventColorId(candidate.person, familyMembers),
+    // Candidates from before these fields existed have neither — default
+    // audience to 'family' (visible), never silently hide an event; omit
+    // an absent category rather than pass an invalid one through (the
+    // dashboard's iconForCategory already treats "no match" as 📌).
+    audience: candidate.audience || 'family',
+    activityCategory: candidate.activity_category || undefined,
+  };
+}
+
 export function formatDateTime(date, time) {
   if (!date) return '';
   if (!time) return date;
