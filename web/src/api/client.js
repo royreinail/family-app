@@ -52,8 +52,8 @@ export const deleteFamilyMember = (id) => request(`/api/family-members/${id}`, {
 
 // -- WhatsApp bot -------------------------------------------------------------
 export const getBotConfig = () => request('/api/bot-config');
-export const confirmBotConfig = (phoneNumber) =>
-  request('/api/bot-config/confirm', { method: 'POST', body: json({ phoneNumber }) });
+export const confirmBotConfig = (phoneNumber, familyMemberId) =>
+  request('/api/bot-config/confirm', { method: 'POST', body: json({ phoneNumber, familyMemberId }) });
 
 // -- kid dashboard ------------------------------------------------------------
 export const getTomorrow = () => request('/api/dashboard/tomorrow');

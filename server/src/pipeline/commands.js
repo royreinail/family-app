@@ -48,6 +48,23 @@ export function parseCorrectedTime(text) {
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
 
+// Same follow-up-answer reply ("8:30-18:00", "8:30 to 6pm") but captures a
+// second time when the answer gives a real range, not just a start — real
+// bug: a range answer to "What time?" silently kept only the start time,
+// the same duration-loss bug item 1 fixed for the *initial* message, just
+// never carried over to the follow-up-answer merge path. Looks for a second
+// time-shaped match after the first one ends; a single "8:30" still yields
+// endTime: null exactly as before.
+export function parseCorrectedTimeRange(text) {
+  const raw = text || '';
+  const time = parseCorrectedTime(raw);
+  if (!time) return { time: null, endTime: null };
+  const firstMatch = raw.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  const rest = raw.slice(firstMatch.index + firstMatch[0].length);
+  const endTime = parseCorrectedTime(rest);
+  return { time, endTime: endTime && endTime !== time ? endTime : null };
+}
+
 // True when the whole message is just an answer to the bot's "What time?"
 // follow-up — "8:30", "at 8:30am", "8:30 בבוקר" — and nothing else. Used to
 // decide whether an incoming message should be merged into a parked
@@ -63,10 +80,10 @@ export function isBareTimeAnswer(text) {
     .replace(/\d{1,2}(?::\d{2})?/g, ' ') // the digits of the time itself
     .replace(/\b[ap]\.?m\.?\b/gi, ' ') // am / pm / a.m. / p.m.
     .replace(
-      /\b(at|around|about|approx|by|from|starts?|start|time|in|the|on|o'?clock|morning|afternoon|evening|noon|midday|midnight|tonight|today)\b/gi,
+      /\b(at|around|about|approx|by|from|to|until|till|through|starts?|start|end|ends|time|in|the|on|o'?clock|morning|afternoon|evening|noon|midday|midnight|tonight|today)\b/gi,
       ' '
     )
-    .replace(/בשעה|בבוקר|בבקר|אחה"?צ|בצהריי?ם|בערב|בלילה|בסביבות|בערך|ב['׳]?/g, ' ') // common Hebrew time filler
+    .replace(/בשעה|בבוקר|בבקר|אחה"?צ|בצהריי?ם|בערב|בלילה|בסביבות|בערך|עד|ב['׳]?/g, ' ') // common Hebrew time filler, incl. "until"
     .replace(/[\s,.\-–—:;!?"'()[\]]/g, '');
   return residue.length === 0;
 }

@@ -2,29 +2,59 @@ import { useEffect, useState } from 'react';
 import { color, ink, weight } from '../../../theme/tokens.js';
 import ProgressDots from '../../../components/ProgressDots.jsx';
 import PrimaryButton from '../../../components/PrimaryButton.jsx';
-import { getBotConfig, confirmBotConfig } from '../../../api/client.js';
+import { getBotConfig, confirmBotConfig, getFamilyMembers } from '../../../api/client.js';
 
 export const STEP_INDEX = 4;
 
 /** Reused in Settings Home > WhatsApp Connection (edit mode). */
 export default function WhatsAppStep({ totalSteps, onNext, editMode = false, onDone }) {
   const [config, setConfig] = useState(null);
+  const [members, setMembers] = useState([]);
   const [myNumber, setMyNumber] = useState('');
+  // Item 6's forwarded-sender default (and its color assignment) depends on
+  // knowing which family member a connected number actually belongs to —
+  // real bug: this was never asked at all, so that default silently never
+  // fired for any real message. Defaults to the sole parent when there's
+  // only one, since that's who's almost always doing this step.
+  const [memberId, setMemberId] = useState('');
   const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
-    getBotConfig().then(setConfig);
+    getBotConfig().then((c) => {
+      setConfig(c);
+      // Pre-fill so relinking an already-connected number (e.g. after this
+      // fix shipped, for a number confirmed before it existed) doesn't
+      // require retyping it — only meaningful when there's exactly one.
+      if (c.acceptedChatIds?.length === 1) setMyNumber(c.acceptedChatIds[0]);
+    });
+    getFamilyMembers().then(({ members: list }) => {
+      setMembers(list);
+      const parents = list.filter((m) => m.is_parent);
+      if (parents.length === 1) setMemberId(parents[0].id);
+    });
   }, []);
 
   async function confirm() {
-    if (!myNumber.trim()) return;
+    if (!myNumber.trim() || !memberId) return;
     setConfirming(true);
-    const updated = await confirmBotConfig(myNumber.trim());
-    setConfig((c) => ({ ...c, connected: updated.connected, acceptedChatIds: updated.acceptedChatIds }));
+    const updated = await confirmBotConfig(myNumber.trim(), memberId);
+    setConfig((c) => ({ ...c, connected: updated.connected, acceptedChatIds: updated.acceptedChatIds, senderMappings: updated.senderMappings }));
     setConfirming(false);
   }
 
   const connected = config?.connected;
+  const memberPicker = members.length > 0 && (
+    <select
+      value={memberId}
+      onChange={(e) => setMemberId(e.target.value)}
+      style={{ font: `${weight.semibold} 15px/1.3 Nunito, sans-serif`, padding: '12px 16px', borderRadius: 16, border: `1px solid ${ink(0.15)}`, width: 260, textAlign: 'center' }}
+    >
+      <option value="" disabled>Whose number is this?</option>
+      {members.map((m) => (
+        <option key={m.id} value={m.id}>{m.name}</option>
+      ))}
+    </select>
+  );
 
   return (
     <>
@@ -48,19 +78,21 @@ export default function WhatsAppStep({ totalSteps, onNext, editMode = false, onD
           </div>
         )}
 
-        {connected ? (
+        {connected && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             <span className="ms" style={{ fontSize: 22, color: color.accentWhatsapp }}>check_circle</span>
             <div style={{ font: `${weight.bold} 15px/1.3 Nunito, sans-serif`, color: ink(0.55) }}>Connected</div>
           </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-            <input
-              value={myNumber}
-              onChange={(e) => setMyNumber(e.target.value)}
-              placeholder="Your WhatsApp number, e.g. +15551234567"
-              style={{ font: `${weight.semibold} 15px/1.3 Nunito, sans-serif`, padding: '12px 16px', borderRadius: 16, border: `1px solid ${ink(0.15)}`, width: 260, textAlign: 'center' }}
-            />
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+          <input
+            value={myNumber}
+            onChange={(e) => setMyNumber(e.target.value)}
+            placeholder="Your WhatsApp number, e.g. +15551234567"
+            style={{ font: `${weight.semibold} 15px/1.3 Nunito, sans-serif`, padding: '12px 16px', borderRadius: 16, border: `1px solid ${ink(0.15)}`, width: 260, textAlign: 'center' }}
+          />
+          {memberPicker}
+          {!connected && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
               <div style={{ display: 'flex', gap: 5 }}>
                 <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#c9a24a', animation: 'waitDot 1.4s ease-in-out infinite' }} />
@@ -69,14 +101,15 @@ export default function WhatsAppStep({ totalSteps, onNext, editMode = false, onD
               </div>
               <div style={{ font: `${weight.bold} 15px/1.3 Nunito, sans-serif`, color: ink(0.45) }}>Waiting for your first message</div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center' }}>
-        {connected ? (
+        <PrimaryButton onClick={confirm} disabled={confirming || !myNumber.trim() || !memberId} tone="green">
+          {connected ? 'Save' : 'I sent a message'}
+        </PrimaryButton>
+        {connected && (
           <PrimaryButton onClick={() => (editMode ? onDone?.() : onNext())} tone="green">Continue</PrimaryButton>
-        ) : (
-          <PrimaryButton onClick={confirm} disabled={confirming || !myNumber.trim()} tone="green">I sent a message</PrimaryButton>
         )}
         {!editMode && (
           <button onClick={onNext} style={{ background: 'none', border: 'none', cursor: 'pointer', font: `${weight.bold} 15px/1 Nunito, sans-serif`, color: ink(0.42) }}>

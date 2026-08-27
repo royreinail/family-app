@@ -10,7 +10,7 @@ import * as extractionLogRepo from '../repositories/extractionLog.js';
 import * as tasksRepo from '../repositories/tasks.js';
 import * as botConfigRepo from '../repositories/botConfig.js';
 import { evaluateRules } from '../rules/engine.js';
-import { matchCommand, helpReply, formatTaskList, parseCorrectedTime, isBareTimeAnswer } from './commands.js';
+import { matchCommand, helpReply, formatTaskList, parseCorrectedTime, parseCorrectedTimeRange, isBareTimeAnswer } from './commands.js';
 import {
   factsFromCandidate,
   confirmReply,
@@ -107,10 +107,12 @@ export async function handleIncomingMessage(message, deps) {
   if (!replyToExtractionLogId && isBareTimeAnswer(text)) {
     const pending = await extractionLogRepo.findRecentPendingFollowUp({ familyId, senderIdentifier }, pool);
     if (pending) {
+      const { time: newTime, endTime: newEndTime } = parseCorrectedTimeRange(text);
       return promotePendingEventWithTime({
         log,
         pending,
-        newTime: parseCorrectedTime(text),
+        newTime,
+        newEndTime,
         calendar,
         messenger,
         senderIdentifier,
@@ -297,8 +299,9 @@ async function handleCorrection({ log, replyToExtractionLogId, text, calendar, m
   // one. Same promotion as the no-quote follow-up path (3b): merge the
   // time in, create the real calendar event, retire the tentative task.
   if (original.state === 'needs_time' && newTime) {
+    const { endTime: newEndTime } = parseCorrectedTimeRange(text);
     return promotePendingEventWithTime({
-      log, pending: original, newTime, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers,
+      log, pending: original, newTime, newEndTime, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers,
     });
   }
 
@@ -364,8 +367,11 @@ async function applyPersonCorrection({ log, original, matchedMember, calendar, m
 // the person — all we add is the time. Then it graduates from a tentative
 // task to a real calendar event, and the placeholder task the date-only
 // branch created is retired so it doesn't linger in "list tasks".
-async function promotePendingEventWithTime({ log, pending, newTime, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers = [] }) {
-  const candidate = { ...pending.ai_candidate, time: newTime };
+async function promotePendingEventWithTime({ log, pending, newTime, newEndTime = null, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers = [] }) {
+  // A range answer ("8:30-18:00") carries a real end time the way the
+  // *initial* message already could (item 1) — real bug: the follow-up
+  // merge only ever kept the start, silently dropping a given end time.
+  const candidate = { ...pending.ai_candidate, time: newTime, end_time: newEndTime };
 
   const parkedTask = await tasksRepo.findBySourceExtractionLogId(pending.id, pool);
   if (parkedTask) await tasksRepo.softDelete(parkedTask.id, pool);

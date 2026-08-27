@@ -154,10 +154,19 @@ export default function FamilyMembersStep({ totalSteps, onNext, editMode = false
               <button
                 key={c}
                 onClick={() => setDraft((d) => ({ ...d, calendarColor: c }))}
+                aria-label={c}
                 style={{
                   width: 40, height: 40, borderRadius: '50%', background: c, border: 'none', cursor: 'pointer',
+                  // Real bug: this used to dim unselected swatches to 0.55
+                  // opacity, so every swatch read as a lighter, washed-out
+                  // version of its actual color right up until it was picked
+                  // — the moment of selection visibly snapped to a darker,
+                  // more saturated shade, because THAT full-opacity value was
+                  // always what actually got applied to the Calendar event
+                  // (personPalette is the real hex, no separate "swatch tint").
+                  // Selection state now lives only in the ring, so what's
+                  // shown always matches what's assigned.
                   boxShadow: draft.calendarColor === c ? `0 0 0 3px ${color.surface}, 0 0 0 6px ${c}` : 'none',
-                  opacity: draft.calendarColor === c ? 1 : 0.55,
                 }}
               />
             ))}

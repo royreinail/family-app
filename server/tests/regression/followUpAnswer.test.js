@@ -26,7 +26,7 @@ import * as familyMembersRepo from '../../src/repositories/familyMembers.js';
 import * as extractionLogRepo from '../../src/repositories/extractionLog.js';
 import * as tasksRepo from '../../src/repositories/tasks.js';
 import { hexToColorId } from '../../src/integrations/googleColors.js';
-import { isBareTimeAnswer } from '../../src/pipeline/commands.js';
+import { isBareTimeAnswer, parseCorrectedTimeRange } from '../../src/pipeline/commands.js';
 
 let pool;
 
@@ -203,4 +203,42 @@ test('isBareTimeAnswer: strict about what counts as just-a-time', () => {
   for (const no of ['', 'thanks!', 'Dentist tomorrow 9am', 'move it to Friday', 'gymnastics at 8:30', 'tomorrow 9am']) {
     assert.equal(isBareTimeAnswer(no), false, `${JSON.stringify(no)} should NOT count as a bare time answer`);
   }
+});
+
+// Real bug from live testing: a range answer to "What time?" ("8:30-18:00")
+// kept only the start time — the same duration-loss item 1 fixed for the
+// *initial* message, never carried over to this merge path. isBareTimeAnswer
+// must still recognize a range (not fall through to normal extraction).
+test('parseCorrectedTimeRange: a range answer keeps both the start and the end', () => {
+  for (const rangeText of ['8:30-18:00', '8:30 to 18:00', '8:30-6pm', 'from 8:30 until 18:00']) {
+    assert.equal(isBareTimeAnswer(rangeText), true, `${JSON.stringify(rangeText)} should still count as a bare time answer`);
+    const { time, endTime } = parseCorrectedTimeRange(rangeText);
+    assert.equal(time, '08:30', `${JSON.stringify(rangeText)}`);
+    assert.equal(endTime, '18:00', `${JSON.stringify(rangeText)}`);
+  }
+  // A single time still yields no end time, exactly as before.
+  assert.deepEqual(parseCorrectedTimeRange('8:30'), { time: '08:30', endTime: null });
+});
+
+test('a range reply to "What time?" ("8:30-18:00") keeps the real duration, not a default 1-hour block', async () => {
+  const { family, knownSender, gaia, familyMembers } = await seedFamilyWithGaia();
+  const calendar = createFakeCalendar();
+  const messenger = createFakeMessenger();
+  const llm = createFakeLlm({ [HEBREW_FIRST_TURN]: firstTurnExtraction() });
+
+  await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: HEBREW_FIRST_TURN, externalMessageId: 'wamid.followup-5a' },
+    { pool, llmExtract: llm.extract, calendar, messenger, timeZone: 'Asia/Jerusalem', familyMembers }
+  );
+
+  const second = await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: '8:30-18:00', externalMessageId: 'wamid.followup-5b' },
+    { pool, llmExtract: llm.extract, calendar, messenger, timeZone: 'Asia/Jerusalem', familyMembers }
+  );
+
+  assert.equal(second.outcome, 'written');
+  const written = [...calendar.events.values()][0];
+  assert.equal(written.startDateTime, '2026-08-31T08:30:00');
+  assert.equal(written.endDateTime, '2026-08-31T18:00:00', 'the given end time, not a default 1-hour block');
+  assert.match(messenger.sent.at(-1).text, /08:30–18:00/, 'confirmation echoes the real range back');
 });
