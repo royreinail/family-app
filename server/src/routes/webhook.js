@@ -14,6 +14,26 @@ import * as calendarIntegration from '../integrations/calendar.js';
 import * as messengerIntegration from '../integrations/messenger.js';
 import * as llmIntegration from '../integrations/llm.js';
 
+// A shared photo arrives one of two shapes depending on how the sender
+// sent it: the native "image" type (auto-compressed), or a "document"
+// whose mime_type happens to be an image (common when someone
+// deliberately avoids WhatsApp's compression to keep flyer text legible)
+// — both carry real bytes behind a media ID the same way. Only the first
+// was ever handled here, so a photo shared as a document silently got
+// neither an image nor any text at all — real bug: "wasn't able to
+// manage [the image] at all." Exported and tested directly (pure, no
+// network) since the real WhatsApp/media-download calls around it aren't
+// unit-tested, same as every other real integration call in this codebase.
+export function resolveImageMediaRef(message) {
+  if (message?.type === 'image' && message.image?.id) {
+    return { id: message.image.id, caption: message.image.caption };
+  }
+  if (message?.type === 'document' && message.document?.id && message.document?.mime_type?.startsWith('image/')) {
+    return { id: message.document.id, caption: message.document.caption };
+  }
+  return null;
+}
+
 export function webhookRouter() {
   const router = Router();
 
@@ -67,14 +87,40 @@ export function webhookRouter() {
 
       // Forwarded photos (flyers, schedules) are a Phase 1 intake channel —
       // WhatsApp sends the image as a media ID, not inline bytes.
+      const mediaRef = resolveImageMediaRef(message);
+
       let image = null;
-      if (message.type === 'image' && message.image?.id) {
+      let imageDownloadFailed = false;
+      if (mediaRef) {
         try {
-          image = await messengerIntegration.downloadMedia(message.image.id);
-          text = message.image.caption || text;
+          image = await messengerIntegration.downloadMedia(mediaRef.id);
+          text = mediaRef.caption || text;
         } catch (err) {
           console.error('Failed to download WhatsApp image media', err);
+          imageDownloadFailed = true;
         }
+      }
+
+      // Nothing at all for the pipeline to work with — either the image
+      // download itself failed, or the message is some other type we
+      // don't read (audio, video, sticker, location, a non-image
+      // document...). Previously this fell all the way through to
+      // extraction_classification:nothing_usable, whose action is
+      // `{type: 'stop', reply: 'none'}` — completely silent, indistinguishable
+      // from Meta never having called us at all. Say so directly instead;
+      // "every message should receive at least some response" (Roy). One
+      // deliberate exception: a 👍-style reaction to a bot message is not a
+      // request needing a response — replying to every reaction would be
+      // its own new annoyance, not a fix.
+      const isReaction = message.type === 'reaction';
+      if (!isReaction && (imageDownloadFailed || (!text && !image && message.type !== 'text' && message.type !== 'button'))) {
+        await messengerIntegration.send(
+          senderIdentifier,
+          imageDownloadFailed
+            ? "I couldn't download that photo — mind sending it again?"
+            : "I can only read text messages and photos right now — try resending as one of those."
+        );
+        return;
       }
 
       let replyToExtractionLogId = null;
