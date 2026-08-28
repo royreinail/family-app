@@ -527,3 +527,34 @@ top corner. Fixed by only including `paddingTop` in the style object at all when
 (conditional spread), rather than including the key with a nullish value — the general lesson: never mix a
 CSS shorthand and one of its own longhands in the same React inline-style object where the longhand's value
 might be `undefined`; omit the key entirely instead of passing `undefined`.
+
+---
+
+## "Family App" naming inventory (Aug 2026)
+
+Every place the literal product name "Family App" appears, so a future rename has a checklist instead of
+a fresh grep each time. Found via `grep -rniI "family app|familyapp|family-app|family_app"` across the
+whole repo (excluding `node_modules`/`dist`/`.git`). Grouped by how costly each is to change.
+
+**User-facing copy (the ones that actually matter for a rename):**
+| Where | What it says |
+|---|---|
+| [InviteCoParentStep.jsx:26](web/src/features/onboarding/steps/InviteCoParentStep.jsx) | Web Share API text when inviting a co-parent: `"Join our Family App"` / `"Join our family on Family App"` |
+| [app.js:35,39](server/src/app.js) | The `/privacy` page (public, required by Meta's WhatsApp app-review checklist) — page `<title>` and opening sentence both say "Family App" |
+| family-app-architecture.md (this doc, "Known gap closed" reminder-template section) | The WhatsApp message template proposed to Meta: Header `"Family App Reminder"`, Body `"...sent by your Family App assistant."` — **the costliest one to change**: once Meta approves a template it can't be edited, only replaced with a newly-submitted, newly-approved one, so a rename here means resubmitting and waiting on review again, not a quick edit |
+
+**Code/config identifiers (internal, lower stakes, but a rename means touching all of these consistently):**
+| Where | What it is |
+|---|---|
+| [package.json:2](package.json), [server/package.json:2](server/package.json), [web/package.json:2](web/package.json) | npm package names: `family-app`, `family-app-server`, `family-app-web` |
+| [app.js:20](server/src/app.js) | Session cookie name: `'family-app-session'` — changing this logs every currently-signed-in user out once (cookie name mismatch), harmless but worth doing deliberately, not by surprise |
+| [schema.sql:1-2](server/src/db/schema.sql) | Comment header only, not a real identifier — no data-model impact |
+| [server.js:13](server/src/server.js) | Boot log line only (`console.log`), not user-visible |
+| [messenger.js](server/src/integrations/messenger.js), [familySetup.js](server/src/services/familySetup.js) | Code comments pointing back to this doc's filename — would go stale if the *doc* is renamed, not the product name inside it |
+
+**Outside the repo entirely (can't grep, can't fix in code):**
+- GitHub repo: `github.com/royreinail/family-app` — GitHub auto-redirects the old URL after a rename, so low risk, but `git remote` URLs on any other clone would need updating manually.
+- Railway's live URL: `family-app-production-9a73.up.railway.app` — Railway-generated from the service name; renaming the Railway service doesn't necessarily change an already-issued domain, and a custom domain is a separate, cleaner option regardless of this rename question.
+- The WhatsApp bot's own display name (the "מרלין" persona name Roy sees in his own chat with it) — that's configured directly in Meta Business Manager, not anywhere in this codebase, so it's independent of any "Family App" rename here — worth remembering as a *separate* naming surface if a full rebrand ever happens.
+
+**Explicitly not the same thing, don't conflate when renaming:** [index.html](web/index.html)'s browser-tab title is `"Tomorrow — Family Board"` — a different, deliberately-chosen name for the kid dashboard view specifically (see `TomorrowBoardPage.jsx`), not an instance of the product name "Family App." Changing one doesn't imply changing the other.
