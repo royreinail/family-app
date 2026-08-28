@@ -106,6 +106,22 @@ test('a candidate with no activity_category at all (old fixture shape) omits the
   assert.equal(calendar.events.get(eventId).activityCategory, undefined);
 });
 
+// Real production bug: "ערב סרט" (Hebrew for "movie night") landed on the
+// 📌 last-resort pushpin. Not a matching failure — the LLM's category
+// classification is language-agnostic by design (this is exactly the path
+// resolveEventIcon's "no keyword match -> falls back to the persisted
+// category" test above covers) — the real gap was that there was no
+// "movie" category anywhere in the canonical list for the LLM to classify
+// into at all, English keyword or not.
+test('a movie-night event (no English keyword, Hebrew title) gets the movie icon via the LLM category, not the pushpin', () => {
+  const icons = DEFAULT_ICONS;
+  assert.equal(iconForCategory('movie'), '🎬');
+  assert.equal(
+    resolveEventIcon({ summary: 'ערב סרט', extendedProperties: { private: { activityCategory: 'movie' } } }, icons),
+    '🎬'
+  );
+});
+
 test('the LLM schema enum and the keyword-seed categories never drift apart', () => {
   // Sanity check on the single-source-of-truth claim itself.
   assert.ok(ACTIVITY_CATEGORIES.length > 10);

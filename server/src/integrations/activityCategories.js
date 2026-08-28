@@ -23,6 +23,12 @@ export const ACTIVITY_CATEGORIES = [
   { category: 'music', icon: '🎵', keywords: ['music'] },
   { category: 'piano', icon: '🎹', keywords: ['piano'] },
   { category: 'art', icon: '🎨', keywords: ['art'] },
+  // Real bug: "ערב סרט" (Hebrew for "movie night") landed on the 📌
+  // last-resort pushpin — not a matching failure (the LLM path is
+  // language-agnostic by design), but a real content gap: there was no
+  // "movie" category at all in this list for it to classify into, English
+  // keyword or not.
+  { category: 'movie', icon: '🎬', keywords: ['movie', 'movie night', 'cinema', 'film'] },
   { category: 'pickup', icon: '🚗', keywords: ['pickup'] },
   { category: 'shopping', icon: '🛒', keywords: ['shopping', 'shop', 'groceries'] },
   { category: 'appointment', icon: '📅', keywords: ['appointment'] },

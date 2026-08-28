@@ -619,6 +619,26 @@ calendar, then a same-account reconnect mirroring auth.js's actual call shape �
 survives; plus a check that a brand-new connection still gets a sensible `'primary'` default. Full suite:
 93/93 passing.
 
+**Missing activity category: "ערב סרט" (movie night) landed on the 📌 pushpin (✅ fixed).** Not a
+matching failure — the LLM's `activity_category` classification is deliberately language-agnostic (it's
+what makes a Hebrew title resolve to the right icon at all, same mechanism as the shopping/dance
+examples already covered by `tests/regression/activityIcons.test.js`) — the real gap was that there was
+no `movie` category anywhere in `activityCategories.js`'s canonical list for the LLM to classify *into*,
+English keyword or not. Added `{ category: 'movie', icon: '🎬', keywords: ['movie', 'movie night',
+'cinema', 'film'] }`; since the LLM's schema enum and the DB-seeded keyword list are both derived
+directly from this one array (see the file's own header comment), no other code changed. Only fixes
+*future* movie-night events — an already-created Calendar event has its `activityCategory` baked into
+`extendedProperties` at write time, so Roy's existing "ערב סרט" event keeps showing 📌 unless
+recreated; there's no reclassify-in-place mechanism (yet — same "nice-to-have" gap as the audience
+manual-override item noted earlier in this doc). Separately worth noting: `ensureFamilySetup`'s
+icon-seeding is all-or-nothing (`existingIcons.length === 0`) — an *already-provisioned* family (Roy's)
+won't retroactively get the new `movie` row added to its own `activity_icons` table, so the fast
+English-keyword path (`resolveIcon`) won't short-circuit for a future English "Movie night" title either
+— but the fallback (`iconForCategory`, which reads the canonical list directly, not per-family DB rows)
+still resolves it correctly regardless, so this has no user-visible effect, just a minor efficiency note
+for later. `tests/regression/activityIcons.test.js` covers the exact Hebrew case. Full suite: 94/94
+passing.
+
 ---
 
 ## "Family App" naming inventory (Aug 2026)
