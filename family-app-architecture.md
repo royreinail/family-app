@@ -600,6 +600,25 @@ further to chase blind without one of those.
 
 Frontend build clean throughout; backend untouched by any of these four (no server test suite changes needed).
 
+**Calendar selection (backlog 2.1) silently reverting to 'primary' on reconnect (✅ fixed).** Roy: events
+still land on his own personal calendar, not היומן המשפחתי (the family calendar), despite having
+explicitly selected it in Settings → Calendar. Confirmed with him directly that he *had* selected it —
+this ruled out "never configured" and pointed at a real regression. Root cause:
+`googleCredentialsRepo.upsert()` is called on *every* OAuth round-trip — the very first connect, a
+reconnect after a dead refresh token (the "Reconnect Google Calendar" flow from the `invalid_grant` fix
+earlier this doc), or any later re-sign-in — and `auth.js`'s callback never passes a `calendarId` on any
+of those calls, only the token fields. `upsert()` defaulted the missing `calendarId` to `'primary'` and
+wrote it **unconditionally** in the UPDATE branch (no `coalesce` guarding it), so any one of those
+routine, invisible-to-the-user OAuth round-trips silently discarded whatever the family had explicitly
+picked in Settings, resetting back to the signed-in account's own calendar with zero notification that
+anything had changed. Fixed: `calendarId` now defaults to `null` ("caller didn't specify one — leave
+whatever's already there alone") and the UPDATE does `calendar_id = coalesce($7, calendar_id)`; only the
+INSERT path (a genuinely first-time connection, nothing existing to preserve) still falls back to
+`'primary'`. `tests/regression/calendarSelection.test.js` adds the exact real-world sequence — select a
+calendar, then a same-account reconnect mirroring auth.js's actual call shape — asserting the selection
+survives; plus a check that a brand-new connection still gets a sensible `'primary'` default. Full suite:
+93/93 passing.
+
 ---
 
 ## "Family App" naming inventory (Aug 2026)

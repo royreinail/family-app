@@ -41,6 +41,46 @@ test('setCalendarId updates the target calendar without touching stored tokens',
   assert.equal(persisted.calendar_id, 'shared-family@group.calendar.google.com');
 });
 
+// Real production bug: "still logged on my calendar, not the family
+// calendar" — Roy had explicitly selected the family calendar, and it kept
+// reverting. Root cause: auth.js's OAuth callback calls upsert() on *every*
+// round-trip (first connect, a reconnect after a dead refresh token, any
+// later re-sign-in) and never passes calendarId — upsert() used to default
+// that to 'primary' and write it unconditionally, so a routine reconnect
+// silently discarded whatever the family had picked in Settings, with zero
+// notification. This is the exact real-world sequence: select, then
+// reconnect (mirrors auth.js's callback, which never passes calendarId).
+test('a later upsert() (e.g. a reconnect after token expiry) preserves an explicitly-selected calendar, not just fresh tokens', async () => {
+  await googleCredentialsRepo.upsert(
+    { familyId: family.id, googleAccountEmail: 'parent@example.com', accessToken: 'access-1', refreshToken: 'refresh-1', scope: 'calendar' },
+    pool
+  );
+  await googleCredentialsRepo.setCalendarId(family.id, 'shared-family@group.calendar.google.com', pool);
+
+  // Same account reconnecting (auth.js's real call shape — no calendarId).
+  const reconnected = await googleCredentialsRepo.upsert(
+    { familyId: family.id, googleAccountEmail: 'parent@example.com', accessToken: 'access-2', refreshToken: 'refresh-2', scope: 'calendar' },
+    pool
+  );
+  assert.equal(reconnected.access_token, 'access-2', 'the reconnect itself must still take effect');
+  assert.equal(
+    reconnected.calendar_id,
+    'shared-family@group.calendar.google.com',
+    'reconnecting must not silently reset the calendar selection back to \'primary\''
+  );
+
+  const persisted = await googleCredentialsRepo.findByFamilyId(family.id, pool);
+  assert.equal(persisted.calendar_id, 'shared-family@group.calendar.google.com');
+});
+
+test('a brand-new connection (no existing row) still defaults to \'primary\' when no calendar is specified', async () => {
+  const created = await googleCredentialsRepo.upsert(
+    { familyId: family.id, googleAccountEmail: 'parent@example.com', accessToken: 'a', refreshToken: 'a', scope: 'calendar' },
+    pool
+  );
+  assert.equal(created.calendar_id, 'primary');
+});
+
 test('setCalendarId only affects the calling family, never another family\'s credentials', async () => {
   const otherFamily = await familiesRepo.create({ name: 'Other Family' }, pool);
   await googleCredentialsRepo.upsert(
