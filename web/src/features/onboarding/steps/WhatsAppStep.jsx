@@ -6,6 +6,14 @@ import { getBotConfig, confirmBotConfig, getFamilyMembers } from '../../../api/c
 
 export const STEP_INDEX = 4;
 
+// Mirrors botConfig.js's normalizePhone server-side — senderMappings comes
+// back with bare-digit identifiers (matching what WhatsApp's webhook
+// actually sends), while `myNumber` is whatever human-friendly format was
+// typed ("+1 555-123-4567"). Compare on digits only, same as the server does.
+function normalizePhone(value) {
+  return (value || '').replace(/\D/g, '');
+}
+
 /** Reused in Settings Home > WhatsApp Connection (edit mode). */
 export default function WhatsAppStep({ totalSteps, onNext, editMode = false, onDone }) {
   const [config, setConfig] = useState(null);
@@ -17,6 +25,12 @@ export default function WhatsAppStep({ totalSteps, onNext, editMode = false, onD
   // fired for any real message. Defaults to the sole parent when there's
   // only one, since that's who's almost always doing this step.
   const [memberId, setMemberId] = useState('');
+  // What's actually persisted right now — the baseline the form is
+  // compared against to decide whether there's anything to save at all
+  // (Roy's call: only show Save when the form actually differs from what's
+  // saved, instead of always offering a button that may do nothing).
+  const [savedNumber, setSavedNumber] = useState('');
+  const [savedMemberId, setSavedMemberId] = useState('');
   const [confirming, setConfirming] = useState(false);
   // Real bug: Save gave zero feedback either way — when the number was
   // already connected (the exact re-link case this screen exists for),
@@ -36,24 +50,46 @@ export default function WhatsAppStep({ totalSteps, onNext, editMode = false, onD
   const [membersState, setMembersState] = useState('loading');
 
   useEffect(() => {
-    getBotConfig().then((c) => {
+    // Awaited together (not two independent .then() chains) so the saved
+    // baseline is computed once both are in — racing them separately meant
+    // whichever resolved last silently decided memberId, which could
+    // clobber a real existing mapping with the "sole parent" guess.
+    Promise.all([
+      getBotConfig(),
+      getFamilyMembers()
+        .then((r) => ({ ok: true, list: r.members }))
+        .catch((err) => ({ ok: false, err })),
+    ]).then(([c, membersResult]) => {
       setConfig(c);
+
+      if (!membersResult.ok) {
+        console.error('Failed to load family members for WhatsApp linking', membersResult.err);
+        setMembersState('failed');
+        return;
+      }
+      const list = membersResult.list;
+      setMembers(list);
+      setMembersState('loaded');
+
       // Pre-fill so relinking an already-connected number (e.g. after this
       // fix shipped, for a number confirmed before it existed) doesn't
       // require retyping it — only meaningful when there's exactly one.
-      if (c.acceptedChatIds?.length === 1) setMyNumber(c.acceptedChatIds[0]);
+      const singleNumber = c.acceptedChatIds?.length === 1 ? c.acceptedChatIds[0] : '';
+      if (singleNumber) {
+        setMyNumber(singleNumber);
+        setSavedNumber(singleNumber);
+      }
+      // Prefer the number's *actual* existing link (normalized digits, same
+      // comparison the server uses) over the "sole parent" guess — a real
+      // mapping is a fact, the guess is just a reasonable default absent one.
+      const existingMapping = c.senderMappings?.find(
+        (m) => m.externalIdentifier === normalizePhone(singleNumber)
+      );
+      const parents = list.filter((m) => m.is_parent);
+      const initialMemberId = existingMapping?.familyMemberId || (parents.length === 1 ? parents[0].id : '');
+      setMemberId(initialMemberId);
+      if (existingMapping) setSavedMemberId(existingMapping.familyMemberId);
     });
-    getFamilyMembers()
-      .then(({ members: list }) => {
-        setMembers(list);
-        setMembersState('loaded');
-        const parents = list.filter((m) => m.is_parent);
-        if (parents.length === 1) setMemberId(parents[0].id);
-      })
-      .catch((err) => {
-        console.error('Failed to load family members for WhatsApp linking', err);
-        setMembersState('failed');
-      });
   }, []);
 
   async function confirm() {
@@ -63,6 +99,11 @@ export default function WhatsAppStep({ totalSteps, onNext, editMode = false, onD
     try {
       const updated = await confirmBotConfig(myNumber.trim(), memberId);
       setConfig((c) => ({ ...c, connected: updated.connected, acceptedChatIds: updated.acceptedChatIds, senderMappings: updated.senderMappings }));
+      // Move the baseline to what was just saved — the whole point of
+      // tracking it is so the Save button disappears once there's nothing
+      // left to save, not just that the save succeeded.
+      setSavedNumber(myNumber.trim());
+      setSavedMemberId(memberId);
       setSaveState('saved');
       setTimeout(() => setSaveState((s) => (s === 'saved' ? 'idle' : s)), 3000);
     } catch (err) {
@@ -74,6 +115,10 @@ export default function WhatsAppStep({ totalSteps, onNext, editMode = false, onD
   }
 
   const connected = config?.connected;
+  // Roy's call: only offer Save once there's actually something to save —
+  // not connected at all yet is its own case (handled separately below,
+  // "I sent a message"), always offered when the fields are filled in.
+  const isDirty = myNumber.trim() !== savedNumber || memberId !== savedMemberId;
   const memberPicker =
     members.length > 0 ? (
       <select
@@ -145,9 +190,15 @@ export default function WhatsAppStep({ totalSteps, onNext, editMode = false, onD
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center' }}>
-        <PrimaryButton onClick={confirm} disabled={confirming || !myNumber.trim() || !memberId} tone="green">
-          {confirming ? 'Saving…' : connected ? 'Save' : 'I sent a message'}
-        </PrimaryButton>
+        {/* Not connected yet: always offer "I sent a message" (there's no
+            saved baseline to compare against). Already connected: only
+            offer Save while the form actually differs from what's saved —
+            nothing to click when there's nothing to save. */}
+        {(!connected || isDirty) && (
+          <PrimaryButton onClick={confirm} disabled={confirming || !myNumber.trim() || !memberId} tone="green">
+            {confirming ? 'Saving…' : connected ? 'Save' : 'I sent a message'}
+          </PrimaryButton>
+        )}
         {saveState === 'saved' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span className="ms" style={{ fontSize: 18, color: color.accentWhatsapp }}>check_circle</span>

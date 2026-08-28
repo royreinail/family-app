@@ -754,6 +754,22 @@ zero explanation, indistinguishable from "still saving." Fixed with an explicit 
 (the exact already-connected re-link case) — "✓ Saved" appeared clearly both times. Frontend-only;
 backend untouched, full suite still 103/103.
 
+**Follow-up, same conversation: Save should only appear when there's actually something to save.**
+Roy: "works though lets present the save button dinamically only in case a change was made." Added an
+explicit saved baseline (`savedNumber`/`savedMemberId`, separate from the live form fields) that the
+form is compared against — the Save button (already-connected case only; "I sent a message" for a
+first-time connect is unaffected, there's no baseline to compare yet) only renders while the form
+actually differs from what's persisted, and disappears the instant a save succeeds (the baseline moves
+to match). While wiring the baseline, fixed a related latent bug: the initial `memberId` guess and the
+`senderMappings` fetch used to run in two independent, unordered `.then()` chains — whichever resolved
+last silently won, so the "sole parent" default could clobber a real existing mapping depending on
+network timing. Combined into one `Promise.all`, with the real mapping (matched on normalized digits,
+same comparison `botConfig.js` uses server-side) always taking priority over the guess. Verified in the
+browser end to end: connect a number → Save disappears immediately (nothing left to save); reload the
+page → still correctly hidden (the real persisted mapping loads as the baseline, not just a guess);
+change the picker to a different person → Save reappears immediately. Frontend-only; full backend suite
+still 103/103.
+
 ---
 
 ## "Family App" naming inventory (Aug 2026)
