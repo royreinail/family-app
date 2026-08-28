@@ -151,14 +151,22 @@ export function formatDateTime(date, time) {
   return `${date} ${time}`;
 }
 
-// Item 6 — stated only when the person was *assumed* (from whoever
-// forwarded the message), never for a person the message actually named —
-// that case already reads fine without narration, and always mentioning
-// who an event is for would be a much bigger, unrequested wording change.
-function assumedPersonNote(candidate) {
-  return candidate.personAssumed && candidate.person
-    ? ` for ${candidate.person} (assumed, since you forwarded this — reply to change who it's for)`
+// Real, repeated bug report: the confirmation kept leaving out who an
+// event was actually for, even when `person` was confidently resolved —
+// item 6's original version of this only stated it for the *assumed*
+// (forwarded-sender-default) case, deliberately silent otherwise ("that
+// case already reads fine without narration"). Wrong call — Roy's own
+// live testing kept surfacing the same complaint regardless of whether the
+// person came from an explicit name in the message or the forwarded-sender
+// default. Now states it whenever `person` is known at all; the
+// "(assumed...)" qualifier only appends for the forwarded-default case,
+// same as before.
+function personNote(candidate) {
+  if (!candidate.person) return '';
+  const assumedSuffix = candidate.personAssumed
+    ? " (assumed, since you forwarded this — reply to change who it's for)"
     : '';
+  return ` for ${candidate.person}${assumedSuffix}`;
 }
 
 export function confirmReply(candidate) {
@@ -168,12 +176,12 @@ export function confirmReply(candidate) {
   // correctly captured (or not) is visible in the confirmation itself,
   // not just in the Calendar event a person has to go check separately.
   const range = candidate.end_time ? `${when}–${candidate.end_time}` : when;
-  return `${title}, ${range}${assumedPersonNote(candidate)} — added ✅`;
+  return `${title}, ${range}${personNote(candidate)} — added ✅`;
 }
 
 export function qualifyReply(candidate) {
   const title = candidate.title || 'This';
-  return `Got it — ${title} on ${candidate.date}${assumedPersonNote(candidate)}. What time?`;
+  return `Got it — ${title} on ${candidate.date}${personNote(candidate)}. What time?`;
 }
 
 export function clarifyReply() {

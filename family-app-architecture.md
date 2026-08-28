@@ -679,6 +679,24 @@ additional cost." Redesigned rather than patched again:
   suite: 96/96 passing. Frontend untouched (icon is already fully resolved server-side before reaching
   the client).
 
+**Confirmation message still leaving out who an event was for — a self-inflicted scoping mistake (✅
+fixed).** Roy's complaint kept recurring across multiple rounds of item 6 testing even after the
+forwarded-sender-default note shipped: "the confirmation... were still missing the confirmed event party
+it was set for." Root cause was my own original scoping call, stated explicitly in the code comment at
+the time: `assumedPersonNote` (classify.js) only ever added " for X" when the person was *assumed* (the
+forwarded-sender default) — a plainly-stated person, resolved with full confidence from the message
+itself, got no mention at all, on the reasoning that "that case already reads fine without narration."
+That reasoning was simply wrong per Roy's actual, repeated expectation: renamed to `personNote` and
+broadened to state who the event is for whenever `person` is known at all — the "(assumed, since you
+forwarded this...)" qualifier still only appends for the actual forwarded-default case, unchanged.
+Affects both `confirmReply` (the ✅ confirmation) and `qualifyReply` (the "What time?" follow-up
+question) identically. `tests/regression/forwardedSenderDefault.test.js`'s existing unit test rewritten
+(it had explicitly asserted the old, now-wrong behavior — `doesNotMatch(confirmReply(stated), /for
+Dana/)` — a real example of a test locking in the actual bug); `tests/regression/eventColor.test.js`'s
+existing real-pipeline write test gets new assertions on the reply text itself, not just the written
+event's fields, per the standing principle that a confirmation's actual wording is a real, separate
+thing to verify from what got written behind the scenes. Full suite: 96/96 passing.
+
 ---
 
 ## "Family App" naming inventory (Aug 2026)

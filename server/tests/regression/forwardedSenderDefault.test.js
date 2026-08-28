@@ -78,15 +78,25 @@ test('matchBarePersonCorrection is strict about what counts as just a name', () 
   }
 });
 
-test('confirmReply/qualifyReply state the assumption only when personAssumed is set', () => {
+// Real, repeated bug report: the confirmation kept leaving out who an
+// event was for even when `person` was confidently resolved — the
+// original version of this only stated it for the *assumed* (forwarded-
+// sender-default) case. Now it's stated whenever a person is known at
+// all; only the "(assumed...)" qualifier is exclusive to the assumed case.
+test('confirmReply/qualifyReply always state who the event is for when known; the "(assumed...)" qualifier is exclusive to the forwarded-default case', () => {
   const assumed = { title: 'Birthday party', date: '2026-08-31', time: '16:00', person: 'Dana', personAssumed: true };
   assert.match(confirmReply(assumed), /for Dana \(assumed/);
   const stated = { title: 'Birthday party', date: '2026-08-31', time: '16:00', person: 'Dana' };
   assert.doesNotMatch(confirmReply(stated), /assumed/);
-  assert.doesNotMatch(confirmReply(stated), /for Dana/); // unchanged wording for a stated person
+  assert.match(confirmReply(stated), /for Dana/, 'a confidently-resolved person must be stated too, not just an assumed one');
+  const noPerson = { title: 'Family dinner', date: '2026-08-31', time: '18:00' };
+  assert.doesNotMatch(confirmReply(noPerson), /for /, 'nothing to state when no person was resolved at all');
 
   const assumedPending = { title: 'Art class', date: '2026-08-31', person: 'Dana', personAssumed: true };
   assert.match(qualifyReply(assumedPending), /for Dana \(assumed/);
+  const statedPending = { title: 'Art class', date: '2026-08-31', person: 'Dana' };
+  assert.match(qualifyReply(statedPending), /for Dana/);
+  assert.doesNotMatch(qualifyReply(statedPending), /assumed/);
 });
 
 // ---- full pipeline integration --------------------------------------------

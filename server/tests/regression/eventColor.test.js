@@ -65,4 +65,11 @@ test('a real write threads the matched family member\'s color through to the Cal
   assert.equal(result.outcome, 'written');
   const [eventId] = calendar.events.keys();
   assert.equal(calendar.events.get(eventId).colorId, GOOGLE_EVENT_COLORS[3].colorId);
+  // Real, repeated bug report: the confirmation kept leaving out who an
+  // event was for, even for a plainly-stated (not forwarded/assumed)
+  // person — see classify.js's personNote. Not just colored correctly
+  // behind the scenes; the person needs to actually be legible in the
+  // message a parent reads.
+  assert.match(result.reply, /for Mia/, 'the confirmation must say who the event is for, not just color the event correctly behind the scenes');
+  assert.doesNotMatch(result.reply, /assumed/, 'a plainly-stated person is not an assumption and must not read like one');
 });
