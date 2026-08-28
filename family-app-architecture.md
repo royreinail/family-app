@@ -639,6 +639,46 @@ still resolves it correctly regardless, so this has no user-visible effect, just
 for later. `tests/regression/activityIcons.test.js` covers the exact Hebrew case. Full suite: 94/94
 passing.
 
+*(Superseded by the entry immediately below, same day — Roy's follow-up: patching one missing category
+at a time doesn't scale; stop gatekeeping icons behind a fixed list entirely.)*
+
+**Icon selection redesigned: the LLM picks a real emoji directly, no fixed category list gatekeeping it
+(✅ fixed, Roy's call).** The `movie` category fix above was still the old pattern: someone has to notice
+a gap and hand-add one more `{category, icon, keywords}` entry, every time, forever — Roy's explicit
+feedback: "we should have the full spectrum... we don't need to gatekeep this part... it should be of no
+additional cost." Redesigned rather than patched again:
+
+- `llm.js`'s extraction schema replaces the old `activity_category` **enum** field (constrained to
+  `activityCategories.js`'s fixed list) with a free-text `activity_icon` field — the LLM picks *one
+  emoji* that genuinely fits the activity, in any language, not from any predefined list. Same required
+  field in the same single extraction call as everything else (title/date/time/etc.) — **no second LLM
+  call, no added cost**, just a different value in the one call that was already happening.
+- `classify.js`'s new `sanitizeActivityIcon()` validates the response before it ever reaches a real
+  Calendar event: rejects anything containing a plain letter/digit (a leftover category word slipping
+  through instead of an emoji), anything implausibly long for one emoji, or anything with no recognizable
+  pictographic character — falls back to 📌 only for a genuinely malformed response, not as the routine
+  path. A forced tool call still doesn't guarantee a clean single emoji, so this runs both at write time
+  and again on read (an already-approved icon isn't trusted forever without the same check a fresh one
+  gets).
+- `calendar.js` stores it as `extendedProperties.private.activityIcon` (replacing `activityCategory` for
+  all new writes) — the dashboard reads this straight through, no category-to-icon lookup needed at all
+  anymore for anything written from here on.
+- **Backward compatible on purpose:** `activityCategories.js`'s old list and `iconForCategory()` aren't
+  deleted — they still back the free English-keyword fast match (`activityIcons.js`'s
+  `resolveIcon`/`DEFAULT_ICONS`, unrelated to the LLM's field, still useful, still free) and now serve as
+  a **read-time-only fallback** for any event written before this change, so an old event doesn't regress
+  to the pushpin. `dashboard.js`'s `resolveEventIcon` priority: keyword match, then the icon actually
+  stored on *this* event (re-validated), then the legacy category mapping for pre-change events, then 📌
+  as the true last resort. No new "movie" categories (or any other) ever need adding again — this was the
+  last one.
+- `tests/regression/activityIcons.test.js` rewritten for the new shape: `sanitizeActivityIcon` validation
+  (real emoji accepted, plain words/phrases/empty rejected), the full priority chain including a
+  legacy-event case, a real pipeline write for something with **no category ever defined for it**
+  (camping trip → 🏕️, proving the "no gatekeeping" claim concretely, not just re-testing movie night), the
+  original movie-night bug itself, and a malformed-LLM-response case sanitized before it's written. Full
+  suite: 96/96 passing. Frontend untouched (icon is already fully resolved server-side before reaching
+  the client).
+
 ---
 
 ## "Family App" naming inventory (Aug 2026)

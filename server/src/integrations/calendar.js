@@ -37,16 +37,18 @@ function clientFor(credentials) {
 /**
  * @returns {Promise<{provider: 'google', external_id: string}>}
  */
-export async function createEvent(credentials, { title, startDateTime, endDateTime, timeZone, colorId, attendeeNames, audience, activityCategory } = {}) {
+export async function createEvent(credentials, { title, startDateTime, endDateTime, timeZone, colorId, attendeeNames, audience, activityIcon } = {}) {
   const calendar = clientFor(credentials);
   // Kept out of the visible summary/description on purpose —
   // extendedProperties.private is invisible in Calendar's own UI, so this
   // is pure app metadata, read back by the kid dashboard (classify.js's
-  // shouldShowOnKidBoard for audience, iconForCategory for activityCategory),
-  // never something a parent has to see or edit through Calendar itself.
+  // shouldShowOnKidBoard for audience; dashboard.js reads activityIcon
+  // straight through — the LLM already picked the actual emoji at write
+  // time, no category lookup needed), never something a parent has to see
+  // or edit through Calendar itself.
   const privateProps = {};
   if (audience) privateProps.audience = audience;
-  if (activityCategory) privateProps.activityCategory = activityCategory;
+  if (activityIcon) privateProps.activityIcon = activityIcon;
 
   const { data } = await calendar.events.insert({
     calendarId: credentials.calendar_id || 'primary',

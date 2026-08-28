@@ -9,7 +9,7 @@ import * as familyMembersRepo from '../repositories/familyMembers.js';
 import * as activityIconsRepo from '../repositories/activityIcons.js';
 import * as googleCredentialsRepo from '../repositories/googleCredentials.js';
 import * as calendar from '../integrations/calendar.js';
-import { shouldShowOnKidBoard, iconForCategory } from '../pipeline/classify.js';
+import { shouldShowOnKidBoard, iconForCategory, sanitizeActivityIcon } from '../pipeline/classify.js';
 import { requireFamily } from './middleware.js';
 
 function startOfTomorrow(timezone) {
@@ -24,17 +24,24 @@ function matchMembersToEvent(event, members) {
   return matched.length ? matched : [];
 }
 
-// Free English-keyword match first (activityIconsRepo.resolveIcon — no LLM
-// involved, already correct for plain English titles); falls back to the
-// LLM's own activity_category classification persisted at write time
-// (calendar.js's extendedProperties.private.activityCategory), which
-// covers non-English text and phrasing the keyword list misses. Only
-// events written before activity_category existed (or where the LLM
-// genuinely couldn't tell) fall all the way through to classify.js's own
-// 📌 default.
+// Roy's call (live-testing feedback): stop gatekeeping icons behind a small
+// fixed category list — the LLM now picks a real emoji directly per event
+// (llm.js's activity_icon), covering any activity in any language, not just
+// the ones someone thought to hardcode a category for. Priority: the
+// free English-keyword match still runs first (activityIconsRepo.resolveIcon
+// — no LLM involved, essentially free, and a reasonable sanity-consistent
+// choice for the common English cases it does cover); then the icon
+// actually stored on the event (extendedProperties.private.activityIcon,
+// re-validated here too — an old, already-approved icon shouldn't be
+// trusted forever without the same check a fresh one gets); then
+// activityCategory for any event written *before* this change (so it
+// doesn't regress to the pushpin); only a genuinely untagged event falls
+// through to classify.js's own 📌 default.
 export function resolveEventIcon(item, icons) {
   const keywordMatch = activityIconsRepo.resolveIcon(icons, item.summary);
   if (keywordMatch) return keywordMatch;
+  const storedIcon = item.extendedProperties?.private?.activityIcon;
+  if (storedIcon) return sanitizeActivityIcon(storedIcon);
   return iconForCategory(item.extendedProperties?.private?.activityCategory);
 }
 

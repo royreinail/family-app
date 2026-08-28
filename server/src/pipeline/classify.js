@@ -68,13 +68,32 @@ export function matchBarePersonCorrection(text, familyMembers) {
   return residue.length === 0 ? match : null;
 }
 
-// Icon fallback for when the free English-keyword match (activityIcons.js's
-// resolveIcon) misses — either the title's in another language, or it just
-// doesn't contain one of the hardcoded keywords. Same canonical category
-// list backs both, so a "dance" match via keyword and a "dance" match via
-// this always land on the identical icon.
+// Icon fallback for reading an *already-written* event from before this
+// changed (Roy's call: stop gatekeeping icons behind a fixed category list
+// — the LLM now picks a real emoji directly per event, see
+// llm.js's activity_icon). Kept only so an event written under the old
+// scheme still resolves its icon correctly instead of regressing to the
+// pushpin — no new write ever produces an activity_category again.
 export function iconForCategory(category) {
   return ACTIVITY_CATEGORIES.find((c) => c.category === category)?.icon ?? '📌';
+}
+
+// A forced tool call still doesn't guarantee the model actually returns one
+// clean emoji character rather than a stray word, an empty string, or a
+// whole phrase with an emoji buried in it — validate before it ever reaches
+// a real Calendar event or the dashboard. Deliberately simple rather than
+// an exhaustive Unicode-sequence validator: reject anything containing a
+// plain letter/digit (a strong signal it's a leftover category word, not an
+// emoji), anything implausibly long for a single emoji (real ones,
+// including skin-tone/ZWJ/flag sequences, are short), and anything with no
+// recognizable pictographic character at all.
+const EMOJI_LIKE = /\p{Extended_Pictographic}/u;
+export function sanitizeActivityIcon(icon) {
+  const trimmed = (icon || '').trim();
+  if (!trimmed || trimmed.length > 8 || /[a-zA-Z0-9]/.test(trimmed) || !EMOJI_LIKE.test(trimmed)) {
+    return '📌';
+  }
+  return trimmed;
 }
 
 export function factsFromCandidate(candidate) {
@@ -120,11 +139,9 @@ export function calendarPayloadFromCandidate(candidate, { familyMembers = [], ti
     timeZone,
     colorId: resolveEventColorId(candidate.person, familyMembers),
     // Candidates from before these fields existed have neither — default
-    // audience to 'family' (visible), never silently hide an event; omit
-    // an absent category rather than pass an invalid one through (the
-    // dashboard's iconForCategory already treats "no match" as 📌).
+    // audience to 'family' (visible), never silently hide an event.
     audience: candidate.audience || 'family',
-    activityCategory: candidate.activity_category || undefined,
+    activityIcon: candidate.activity_icon ? sanitizeActivityIcon(candidate.activity_icon) : undefined,
   };
 }
 

@@ -1,7 +1,6 @@
 // The LLM's one job: read raw input, return structured fields only. No
 // confidence score, no routing decision, no reply wording — everything
 // downstream is deterministic app code (see rules/ and pipeline/).
-import { ACTIVITY_CATEGORIES } from './activityCategories.js';
 
 const EXTRACTION_TOOL = {
   name: 'record_extraction',
@@ -25,13 +24,19 @@ const EXTRACTION_TOOL = {
         enum: ['family', 'parent_only'],
         description: "'family' unless the message is clearly only relevant to a parent (a personal appointment, work meeting, 'date night' with no child involved, first-person language about the sender alone). Default to 'family' whenever unclear.",
       },
-      activity_category: {
+      activity_icon: {
         type: 'string',
-        enum: ACTIVITY_CATEGORIES.map((c) => c.category),
-        description: "Best-matching activity category, regardless of what language the message is in — used to pick a suitable icon (e.g. a dance class gets a dancer, a birthday gets a cake) without relying on an English keyword appearing in the text. Use 'other' only when nothing else genuinely fits.",
+        // Free choice, not a fixed enum (Roy's call, live-testing feedback:
+        // a small hardcoded category list gatekept what could get a real
+        // icon at all — "ערב סרט"/movie night had nowhere to go but the
+        // pushpin simply because no one had thought to add a "movie"
+        // category yet). Costs nothing extra — it's the same required field
+        // in the same single extraction call as everything else, just an
+        // emoji instead of a category word, not a second LLM call.
+        description: "Exactly one emoji that best represents this specific activity, regardless of what language the message is in (a dance class -> 💃, a movie night -> 🎬, a dentist visit -> 🦷, a birthday -> 🎉) — pick whatever genuinely fits best, not from a fixed list. Use 📌 only when the message is too vague for any real icon to make sense.",
       },
     },
-    required: ['title', 'date', 'time', 'end_time', 'person', 'category', 'reminder_requested', 'reminder_datetime', 'audience', 'activity_category'],
+    required: ['title', 'date', 'time', 'end_time', 'person', 'category', 'reminder_requested', 'reminder_datetime', 'audience', 'activity_icon'],
   },
 };
 
@@ -45,10 +50,10 @@ explicitly asks to be reminded (e.g. "remind me to..."). Resolve relative dates 
 is clearly not relevant to show a child (a parent's own appointment, a work meeting, "date night"
 with no child involved); default to 'family' whenever it's unclear or the message concerns the
 household generally — the kid dashboard hides 'parent_only' events entirely, so treat 'family' as
-the safe default, not 'parent_only'. Also classify activity_category from the enum provided —
-pick whichever one the activity actually is (a dance class is 'dance', a birthday party is
-'birthday', a grocery run is 'shopping', etc.), independent of what language the message is
-written in; use 'other' only when nothing genuinely fits.`;
+the safe default, not 'parent_only'. Also set activity_icon to exactly one emoji that best
+represents the activity itself — pick freely, whatever genuinely fits (not from any fixed list),
+independent of what language the message is written in; use 📌 only when the message is too vague
+for any real icon to make sense.`;
 
 // Exported (unlike the actual API call, which is never unit-tested — same
 // reasoning as dashboard.js's real Calendar API calls) since this part is
@@ -68,7 +73,7 @@ their name in it (e.g. prefer "Shopping" over "Shopping with Shai" when person i
 /**
  * @param {string} rawInput - message text, or a caption/empty string when `opts.image` is set
  * @param {{referenceDate?: string, model?: string, image?: {base64: string, mimeType: string}, familyMemberNames?: string[]}} [opts]
- * @returns {Promise<{title:string|null,date:string|null,time:string|null,end_time:string|null,person:string|null,category:string|null,reminder_requested:boolean,reminder_datetime:string|null,audience:'family'|'parent_only',activity_category:string}>}
+ * @returns {Promise<{title:string|null,date:string|null,time:string|null,end_time:string|null,person:string|null,category:string|null,reminder_requested:boolean,reminder_datetime:string|null,audience:'family'|'parent_only',activity_icon:string}>}
  */
 export async function extract(rawInput, opts = {}) {
   const apiKey = process.env.ANTHROPIC_API_KEY;

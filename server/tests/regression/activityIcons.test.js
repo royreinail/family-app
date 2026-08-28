@@ -1,10 +1,20 @@
-// Regression coverage for LLM-classified activity icons — added because
-// the free English-keyword match (activityIconsRepo.resolveIcon) never
-// matches non-English text (the family's real usage includes Hebrew),
-// regardless of the keyword-seeding fix. The LLM now also classifies every
-// extraction into a fixed activity_category (llm.js), persisted on the
-// Calendar write (calendar.js's extendedProperties.private) and used by
-// the dashboard as a fallback when the keyword match misses.
+// Regression coverage for activity icons.
+//
+// Originally the LLM classified every extraction into one of a small fixed
+// set of hardcoded categories (activityCategories.js), each mapped to one
+// icon — which is exactly what caused a real bug: "ערב סרט" (Hebrew for
+// "movie night") landed on the 📌 pushpin simply because nobody had
+// thought to add a "movie" category yet. Roy's call: stop gatekeeping —
+// the LLM now picks a real emoji directly per event (llm.js's
+// activity_icon, no enum constraint), covering any activity in any
+// language without waiting on a hardcoded list to catch up. Costs nothing
+// extra: still the one required field in the same single extraction call.
+//
+// The old category->icon mapping (activityCategories.js, iconForCategory)
+// stays only as a read-time fallback for events written *before* this
+// changed, and as the source for the still-useful free English-keyword
+// match (activityIcons.js's DEFAULT_ICONS/resolveIcon) — unrelated to the
+// LLM's field, just a fast local sanity check that runs first.
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -13,7 +23,7 @@ import { setPool } from '../../src/db/pool.js';
 import { seedFamily } from '../setup/seedFamily.js';
 import { createFakeCalendar, createFakeMessenger, createFakeLlm } from '../setup/fakes.js';
 import { handleIncomingMessage } from '../../src/pipeline/pipeline.js';
-import { iconForCategory } from '../../src/pipeline/classify.js';
+import { iconForCategory, sanitizeActivityIcon } from '../../src/pipeline/classify.js';
 import { resolveIcon, DEFAULT_ICONS } from '../../src/repositories/activityIcons.js';
 import { resolveEventIcon } from '../../src/routes/dashboard.js';
 import { ACTIVITY_CATEGORIES } from '../../src/integrations/activityCategories.js';
@@ -38,7 +48,7 @@ test('resolveIcon returns null (not a fallback icon) on no keyword match', () =>
   assert.equal(resolveIcon(icons, ''), null);
 });
 
-test('iconForCategory maps every real category to its canonical icon and falls back to the pushpin for an unknown one', () => {
+test('iconForCategory (legacy read-time fallback only) maps every real category to its canonical icon and falls back to the pushpin for an unknown one', () => {
   assert.equal(iconForCategory('dance'), '💃');
   assert.equal(iconForCategory('shopping'), '🛒');
   assert.equal(iconForCategory('other'), '📌');
@@ -46,14 +56,34 @@ test('iconForCategory maps every real category to its canonical icon and falls b
   assert.equal(iconForCategory(undefined), '📌');
 });
 
-test('resolveEventIcon prefers the keyword match, falls back to the LLM category, then the pushpin', () => {
+test('sanitizeActivityIcon accepts a real single emoji and rejects anything that looks like leftover text', () => {
+  assert.equal(sanitizeActivityIcon('🎬'), '🎬');
+  assert.equal(sanitizeActivityIcon('🏕️'), '🏕️', 'a variation-selector sequence is still one real emoji');
+  assert.equal(sanitizeActivityIcon(' 🎉 '), '🎉', 'trims whitespace');
+  assert.equal(sanitizeActivityIcon('movie'), '📌', 'a plain word must not pass as an emoji');
+  assert.equal(sanitizeActivityIcon(''), '📌');
+  assert.equal(sanitizeActivityIcon(null), '📌');
+  assert.equal(sanitizeActivityIcon('🎬 movie night!'), '📌', 'a whole phrase with an emoji buried in it is not a clean single icon');
+});
+
+test('resolveEventIcon: keyword match, then the icon actually stored on the event, then legacy category, then the pushpin', () => {
   const icons = DEFAULT_ICONS;
-  // Keyword match wins even if a (wrong) category is also present.
+  // Keyword match wins even if a (different) stored icon is also present.
   assert.equal(
-    resolveEventIcon({ summary: 'Dance class', extendedProperties: { private: { activityCategory: 'shopping' } } }, icons),
+    resolveEventIcon({ summary: 'Dance class', extendedProperties: { private: { activityIcon: '🛒' } } }, icons),
     '💃'
   );
-  // No keyword match (Hebrew title) -> falls back to the persisted category.
+  // No keyword match (Hebrew title) -> the icon the LLM actually chose for this specific event.
+  assert.equal(
+    resolveEventIcon({ summary: 'ערב סרט', extendedProperties: { private: { activityIcon: '🎬' } } }, icons),
+    '🎬'
+  );
+  // A stored icon is re-validated on read too, same as at write time.
+  assert.equal(
+    resolveEventIcon({ summary: 'קניות עם שי לי', extendedProperties: { private: { activityIcon: 'not-an-emoji' } } }, icons),
+    '📌'
+  );
+  // An event written before this changed still has the old field, not activityIcon.
   assert.equal(
     resolveEventIcon({ summary: 'קניות עם שי לי', extendedProperties: { private: { activityCategory: 'shopping' } } }, icons),
     '🛒'
@@ -63,29 +93,74 @@ test('resolveEventIcon prefers the keyword match, falls back to the LLM category
   assert.equal(resolveEventIcon({ summary: 'קניות עם שי לי' }, icons), '📌');
 });
 
-test('a real write threads the LLM-classified activity_category through to the Calendar event', async () => {
+test('a real write threads the LLM-chosen emoji straight through to the Calendar event, any activity, no fixed list', async () => {
   const { family, knownSender } = await seedFamily(pool);
   const calendar = createFakeCalendar();
   const messenger = createFakeMessenger();
   const llm = createFakeLlm({
-    'קניות עם שי לי, היום בשעה 14:00': {
-      title: 'קניות עם שי לי', date: '2026-08-19', time: '14:00', person: 'שי לי', category: 'todo',
-      reminder_requested: false, reminder_datetime: null, audience: 'family', activity_category: 'shopping',
+    // Deliberately something with no hardcoded category ever defined for
+    // it — the whole point is this needs no list update to get a real icon.
+    'Camping trip this weekend': {
+      title: 'Camping trip', date: '2026-08-30', time: '09:00', person: null, category: 'activity',
+      reminder_requested: false, reminder_datetime: null, audience: 'family', activity_icon: '🏕️',
     },
   });
 
   const result = await handleIncomingMessage(
-    { familyId: family.id, senderIdentifier: knownSender, text: 'קניות עם שי לי, היום בשעה 14:00', externalMessageId: 'wamid.icon-regression-1' },
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Camping trip this weekend', externalMessageId: 'wamid.icon-regression-1' },
     { pool, llmExtract: llm.extract, calendar, messenger }
   );
 
   assert.equal(result.outcome, 'written');
   const [eventId] = calendar.events.keys();
   const written = calendar.events.get(eventId);
-  assert.equal(written.activityCategory, 'shopping');
+  assert.equal(written.activityIcon, '🏕️');
 });
 
-test('a candidate with no activity_category at all (old fixture shape) omits the field rather than writing an invalid one', async () => {
+test('the movie-night bug itself: a Hebrew title with no English keyword still gets a real icon, not the pushpin', async () => {
+  const { family, knownSender } = await seedFamily(pool);
+  const calendar = createFakeCalendar();
+  const messenger = createFakeMessenger();
+  const llm = createFakeLlm({
+    'ערב סרט ביום שישי': {
+      title: 'ערב סרט', date: '2026-08-28', time: '20:00', person: null, category: 'activity',
+      reminder_requested: false, reminder_datetime: null, audience: 'family', activity_icon: '🎬',
+    },
+  });
+
+  const result = await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: 'ערב סרט ביום שישי', externalMessageId: 'wamid.icon-regression-2' },
+    { pool, llmExtract: llm.extract, calendar, messenger }
+  );
+
+  assert.equal(result.outcome, 'written');
+  const [eventId] = calendar.events.keys();
+  assert.equal(calendar.events.get(eventId).activityIcon, '🎬');
+});
+
+test('a malformed activity_icon from the LLM is sanitized before it ever reaches the Calendar event', async () => {
+  const { family, knownSender } = await seedFamily(pool);
+  const calendar = createFakeCalendar();
+  const messenger = createFakeMessenger();
+  const llm = createFakeLlm({
+    'Dentist tomorrow 9am': {
+      title: 'Dentist', date: '2026-08-29', time: '09:00', person: null, category: 'appointment',
+      reminder_requested: false, reminder_datetime: null, audience: 'family',
+      activity_icon: 'a dentist appointment', // malformed — a whole phrase, not one emoji
+    },
+  });
+
+  const result = await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Dentist tomorrow 9am', externalMessageId: 'wamid.icon-regression-3' },
+    { pool, llmExtract: llm.extract, calendar, messenger }
+  );
+
+  assert.equal(result.outcome, 'written');
+  const [eventId] = calendar.events.keys();
+  assert.equal(calendar.events.get(eventId).activityIcon, '📌', 'never write an unvalidated string straight through as the icon');
+});
+
+test('a candidate with no activity_icon at all (old fixture shape) omits the field rather than writing an invalid one', async () => {
   const { family, knownSender } = await seedFamily(pool);
   const calendar = createFakeCalendar();
   const messenger = createFakeMessenger();
@@ -97,33 +172,16 @@ test('a candidate with no activity_category at all (old fixture shape) omits the
   });
 
   const result = await handleIncomingMessage(
-    { familyId: family.id, senderIdentifier: knownSender, text: 'Soccer practice Thursday 5pm', externalMessageId: 'wamid.icon-regression-2' },
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Soccer practice Thursday 5pm', externalMessageId: 'wamid.icon-regression-4' },
     { pool, llmExtract: llm.extract, calendar, messenger }
   );
 
   assert.equal(result.outcome, 'written');
   const [eventId] = calendar.events.keys();
-  assert.equal(calendar.events.get(eventId).activityCategory, undefined);
+  assert.equal(calendar.events.get(eventId).activityIcon, undefined);
 });
 
-// Real production bug: "ערב סרט" (Hebrew for "movie night") landed on the
-// 📌 last-resort pushpin. Not a matching failure — the LLM's category
-// classification is language-agnostic by design (this is exactly the path
-// resolveEventIcon's "no keyword match -> falls back to the persisted
-// category" test above covers) — the real gap was that there was no
-// "movie" category anywhere in the canonical list for the LLM to classify
-// into at all, English keyword or not.
-test('a movie-night event (no English keyword, Hebrew title) gets the movie icon via the LLM category, not the pushpin', () => {
-  const icons = DEFAULT_ICONS;
-  assert.equal(iconForCategory('movie'), '🎬');
-  assert.equal(
-    resolveEventIcon({ summary: 'ערב סרט', extendedProperties: { private: { activityCategory: 'movie' } } }, icons),
-    '🎬'
-  );
-});
-
-test('the LLM schema enum and the keyword-seed categories never drift apart', () => {
-  // Sanity check on the single-source-of-truth claim itself.
+test('the legacy category list stays populated (still backs the free keyword-seed match and old-event fallback)', () => {
   assert.ok(ACTIVITY_CATEGORIES.length > 10);
   assert.ok(ACTIVITY_CATEGORIES.some((c) => c.category === 'other' && c.icon === '📌'));
 });
