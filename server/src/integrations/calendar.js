@@ -37,18 +37,22 @@ function clientFor(credentials) {
 /**
  * @returns {Promise<{provider: 'google', external_id: string}>}
  */
-export async function createEvent(credentials, { title, startDateTime, endDateTime, timeZone, colorId, attendeeNames, audience, activityIcon } = {}) {
+export async function createEvent(credentials, { title, startDateTime, endDateTime, timeZone, colorId, attendeeNames, audience, activityIcon, personId } = {}) {
   const calendar = clientFor(credentials);
   // Kept out of the visible summary/description on purpose —
   // extendedProperties.private is invisible in Calendar's own UI, so this
   // is pure app metadata, read back by the kid dashboard (classify.js's
   // shouldShowOnKidBoard for audience; dashboard.js reads activityIcon
-  // straight through — the LLM already picked the actual emoji at write
-  // time, no category lookup needed), never something a parent has to see
-  // or edit through Calendar itself.
+  // straight through, same reasoning for personId — the same family member
+  // match that decided colorId here is stored directly, so the dashboard
+  // reads back the actual resolved identity instead of re-guessing from the
+  // event's text at read time, which is a real bug this fixed: most titles
+  // never contain the person's literal name), never something a parent has
+  // to see or edit through Calendar itself.
   const privateProps = {};
   if (audience) privateProps.audience = audience;
   if (activityIcon) privateProps.activityIcon = activityIcon;
+  if (personId) privateProps.personId = personId;
 
   const { data } = await calendar.events.insert({
     calendarId: credentials.calendar_id || 'primary',
@@ -67,6 +71,15 @@ export async function createEvent(credentials, { title, startDateTime, endDateTi
   return { provider: 'google', external_id: data.id };
 }
 
+// NOTE for any caller patching `extendedProperties.private`: whether
+// Calendar's PATCH merges that nested map per-key or replaces it wholesale
+// isn't verified here, and guessing wrong would silently wipe
+// audience/activityIcon whenever something else patches just one key (e.g.
+// a person correction patching personId) — a real visibility bug (a
+// kid-hidden event reverting to shown, or vice versa), not just cosmetic.
+// Callers should send the *complete* intended private-props object every
+// time (not a partial one), same as createEvent already does — see
+// pipeline.js's applyPersonCorrection for the pattern.
 export async function updateEvent(credentials, externalId, patch) {
   const calendar = clientFor(credentials);
   const { data } = await calendar.events.patch({

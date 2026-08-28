@@ -12,8 +12,19 @@ export function createFakeCalendar() {
       events.set(id, evt);
       return { provider: 'google', external_id: id };
     },
+    // A real patch (see calendar.js's updateEvent / pipeline.js's
+    // applyPersonCorrection) nests app metadata under
+    // `extendedProperties.private`, matching Google's real wire format —
+    // but createEvent above stores the flat calendarPayloadFromCandidate
+    // shape directly (personId/audience/activityIcon all top-level, for
+    // easy test assertions like `written.personId`). Unwrap that nesting
+    // here too, onto the same flat record, so a test can assert
+    // `written.personId` consistently regardless of whether it came from
+    // the original create or a later correction.
     updateEvent: async (id, patch) => {
-      events.set(id, { ...events.get(id), ...patch });
+      const { extendedProperties, ...rest } = patch;
+      const flatPrivateProps = extendedProperties?.private ?? {};
+      events.set(id, { ...events.get(id), ...rest, ...flatPrivateProps });
       return { provider: 'google', external_id: id };
     },
     deleteEvent: async (id) => {

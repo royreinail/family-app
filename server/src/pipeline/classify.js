@@ -132,16 +132,30 @@ export function calendarPayloadFromCandidate(candidate, { familyMembers = [], ti
   const end = candidate.end_time
     ? { date: candidate.end_time <= candidate.time ? addDays(candidate.date, 1) : candidate.date, time: candidate.end_time }
     : addOneHour(candidate.date, candidate.time);
+  // Real bug: the kid dashboard re-derived "who is this event for" at read
+  // time by scanning the event's title/description text for a family
+  // member's literal name (dashboard.js's matchMembersToEvent) — completely
+  // independent of the *actual* colorId already resolved and written here.
+  // Most real titles never contain the person's name at all ("Dance class"
+  // for Mia, "Dentist" for Theo), so that heuristic silently found nothing
+  // and the card fell back to a neutral color even though the real Calendar
+  // event was correctly colored the whole time. Fixed at the source: match
+  // once here, store the same matched member's id on the event
+  // (extendedProperties.private.personId), and have the dashboard read that
+  // directly instead of re-guessing — one resolution, not two independent
+  // ones that can drift apart.
+  const matchedMember = matchSingleFamilyMember(candidate.person, familyMembers);
   return {
     title: candidate.title || 'Untitled event',
     startDateTime: `${candidate.date}T${candidate.time}:00`,
     endDateTime: `${end.date}T${end.time}:00`,
     timeZone,
-    colorId: resolveEventColorId(candidate.person, familyMembers),
+    colorId: matchedMember ? hexToColorId(matchedMember.calendar_color) : DEFAULT_COLOR_ID,
     // Candidates from before these fields existed have neither — default
     // audience to 'family' (visible), never silently hide an event.
     audience: candidate.audience || 'family',
     activityIcon: candidate.activity_icon ? sanitizeActivityIcon(candidate.activity_icon) : undefined,
+    personId: matchedMember?.id,
   };
 }
 

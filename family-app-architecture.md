@@ -697,6 +697,47 @@ existing real-pipeline write test gets new assertions on the reply text itself, 
 event's fields, per the standing principle that a confirmation's actual wording is a real, separate
 thing to verify from what got written behind the scenes. Full suite: 96/96 passing.
 
+**Kid dashboard card color didn't match the assigned kid color (✅ fixed) — two independent "who is
+this for" resolutions that could drift apart.** Roy: dashboard card colors don't match the assigned kid
+color. Root cause: `dashboard.js`'s `matchMembersToEvent` decided which family member(s) a card belongs
+to (and therefore its color, via `scheduleLogic.js`'s `colorForMember`) by scanning the Calendar event's
+**title/description text** for a family member's literal name — a completely separate, independent
+guess from the *actual* match already made and colored at write time (`classify.js`'s
+`calendarPayloadFromCandidate` → `resolveEventColorId`). Most real titles never contain the person's
+name at all — "Dance class" for Mia, "Dentist" for Theo, "Commanders Day" for Roy — so the text-scan
+found nothing, and the card silently fell back to a neutral/gray background even though the real
+Calendar event had been correctly colored the entire time. Two independent resolutions of the same
+question, free to drift apart — this was always going to eventually disagree.
+
+Fixed at the source: `calendarPayloadFromCandidate` now also stores the *same* matched family member's
+id as `extendedProperties.private.personId` (alongside the `colorId` it was already deriving from that
+identical match), and `dashboard.js`'s `matchMembersToEvent` reads that back directly instead of
+re-guessing — one resolution instead of two. The old text-scan isn't deleted: it still runs (a) as the
+fallback for any event written *before* `personId` existed (so nothing regresses), and (b) unioned
+alongside a stored `personId` to catch a *second* person genuinely named in the message text — the
+extraction pipeline only ever resolves one `person` field, so text-matching remains the only way the
+existing 2-person-stripe / 3+-avatar-stack card styles (`scheduleLogic.js`'s `cardBackground`) can ever
+detect more than one participant.
+
+Item 6's person-correction path (`applyPersonCorrection`) also needed to repoint `personId`, not just
+`colorId` — otherwise correcting who an event is for would leave the dashboard showing the *old*
+person's color, the exact same drift bug this fix exists to close. Deliberately **not** trusting
+Calendar's PATCH to merge `extendedProperties.private` correctly on a partial update (unverified
+whether it merges the nested map per-key or replaces it wholesale — guessing wrong would silently wipe
+`audience`/`activityIcon` on every correction, a real visibility bug, not a cosmetic one): the
+correction sends the *complete* intended private-props object every time (personId plus whatever
+`audience`/`activityIcon` the original write already had, read back from the extraction log), the same
+way `createEvent` always has, rather than a partial `{personId}}` patch.
+
+Only fixes *future* events — same limitation as the movie-icon and multi-round item-6 fixes above: an
+already-created Calendar event has no `personId` in its `extendedProperties`, so it still falls back to
+the old text-only heuristic until recreated or corrected. `tests/regression/dashboardCardColor.test.js`
+(new) covers `calendarPayloadFromCandidate` storing `personId`, `matchMembersToEvent`'s new priority
+(stored id, then legacy text fallback, then the two combined for a genuinely multi-named event, then
+nothing found), a real pipeline write for a title that never names the person at all (the bug itself),
+and a person-correction repointing `personId` while confirming `audience`/`activityIcon` survive
+untouched. Full suite: 103/103 passing.
+
 ---
 
 ## "Family App" naming inventory (Aug 2026)

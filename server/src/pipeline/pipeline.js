@@ -26,6 +26,7 @@ import {
   resolveEventColorId,
   calendarPayloadFromCandidate,
   localDateTimeToUtcIso,
+  sanitizeActivityIcon,
 } from './classify.js';
 import { scheduleReminder } from './reminders.js';
 
@@ -350,10 +351,26 @@ async function handleCorrection({ log, replyToExtractionLogId, text, calendar, m
 // string could have) and updates the stored candidate so any further
 // correction or "undo" still has the right picture. Clears personAssumed
 // — once explicitly corrected, it's a stated fact, not a guess anymore.
+// Also repoints extendedProperties.private.personId to the corrected
+// member — otherwise the kid dashboard (which reads that field directly,
+// not text-matched, since the dashboard-color-mismatch fix) would keep
+// showing the *old* person's color after a correction, the exact drift bug
+// that fix exists to prevent. Sends the *complete* intended private-props
+// object (audience + activityIcon carried over from what's already stored,
+// plus the new personId) rather than a partial patch — calendar.js's
+// updateEvent isn't relied on to merge that nested map correctly on its
+// own, so this can't accidentally wipe audience/activityIcon even if it
+// doesn't.
 async function applyPersonCorrection({ log, original, matchedMember, calendar, messenger, senderIdentifier, pool }) {
   const updatedCandidate = { ...original.ai_candidate, person: matchedMember.name, personAssumed: false };
   const ref = original.resulting_event_ref;
-  await calendar.updateEvent(ref.external_id, { colorId: resolveEventColorId(matchedMember.name, [matchedMember]) });
+  const privateProps = { personId: matchedMember.id };
+  if (original.ai_candidate?.audience) privateProps.audience = original.ai_candidate.audience;
+  if (original.ai_candidate?.activity_icon) privateProps.activityIcon = sanitizeActivityIcon(original.ai_candidate.activity_icon);
+  await calendar.updateEvent(ref.external_id, {
+    colorId: resolveEventColorId(matchedMember.name, [matchedMember]),
+    extendedProperties: { private: privateProps },
+  });
   await extractionLogRepo.updateState(original.id, { state: 'corrected', aiCandidate: updatedCandidate }, pool);
   await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
   const reply = `Updated — that's now for ${matchedMember.name} ✅`;
