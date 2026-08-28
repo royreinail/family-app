@@ -738,6 +738,22 @@ nothing found), a real pipeline write for a title that never names the person at
 and a person-correction repointing `personId` while confirming `audience`/`activityIcon` survive
 untouched. Full suite: 103/103 passing.
 
+**WhatsApp Connection's Save gave zero feedback either way (✅ fixed).** Roy, testing the re-link fix for
+the sender-linking bug above: "the save confirmation is unclear... the save button is still clickable
+and no saved confirmation is provided." Real gap, not a misunderstanding — `WhatsAppStep.jsx`'s
+`confirm()` had two separate problems. First, for the exact re-link scenario this screen exists for (a
+number that's *already* connected), the UI before and after a successful save looked completely
+identical — "Connected" was already showing, the button already said "Save" — so a successful save
+changed nothing visible at all, no way to tell it had actually happened. Second, `confirm()` had no
+`try`/`catch` at all: a failed request (network hiccup, a bad response) would throw straight out of the
+function, meaning `confirming` never got reset to `false` — the button stuck permanently disabled with
+zero explanation, indistinguishable from "still saving." Fixed with an explicit `saveState`
+(`idle`/`saved`/`error`): a green "✓ Saved" confirmation appears next to the button on success
+(auto-clears after 3s), a red "Couldn't save — try again" on failure, and the button itself now reads
+"Saving…" while in flight. Verified directly in the browser: filled in a number, connected, saved again
+(the exact already-connected re-link case) — "✓ Saved" appeared clearly both times. Frontend-only;
+backend untouched, full suite still 103/103.
+
 ---
 
 ## "Family App" naming inventory (Aug 2026)

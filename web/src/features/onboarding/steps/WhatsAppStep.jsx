@@ -18,6 +18,14 @@ export default function WhatsAppStep({ totalSteps, onNext, editMode = false, onD
   // only one, since that's who's almost always doing this step.
   const [memberId, setMemberId] = useState('');
   const [confirming, setConfirming] = useState(false);
+  // Real bug: Save gave zero feedback either way — when the number was
+  // already connected (the exact re-link case this screen exists for),
+  // "Connected" and the button's own label were already showing before the
+  // click, so a successful save changed nothing visible at all. A failed
+  // save was worse: confirm() had no try/catch, so a thrown request left
+  // `confirming` stuck true forever — the button disabled with no
+  // explanation, indistinguishable from "still saving."
+  const [saveState, setSaveState] = useState('idle'); // 'idle' | 'saved' | 'error'
   // Distinguishes "still loading" from "loaded, genuinely empty" from
   // "failed to load" — the picker below used to be gated on nothing but
   // `members.length > 0`, so any of those three looked identical: no
@@ -51,9 +59,18 @@ export default function WhatsAppStep({ totalSteps, onNext, editMode = false, onD
   async function confirm() {
     if (!myNumber.trim() || !memberId) return;
     setConfirming(true);
-    const updated = await confirmBotConfig(myNumber.trim(), memberId);
-    setConfig((c) => ({ ...c, connected: updated.connected, acceptedChatIds: updated.acceptedChatIds, senderMappings: updated.senderMappings }));
-    setConfirming(false);
+    setSaveState('idle');
+    try {
+      const updated = await confirmBotConfig(myNumber.trim(), memberId);
+      setConfig((c) => ({ ...c, connected: updated.connected, acceptedChatIds: updated.acceptedChatIds, senderMappings: updated.senderMappings }));
+      setSaveState('saved');
+      setTimeout(() => setSaveState((s) => (s === 'saved' ? 'idle' : s)), 3000);
+    } catch (err) {
+      console.error('Failed to save WhatsApp connection', err);
+      setSaveState('error');
+    } finally {
+      setConfirming(false);
+    }
   }
 
   const connected = config?.connected;
@@ -129,8 +146,19 @@ export default function WhatsAppStep({ totalSteps, onNext, editMode = false, onD
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center' }}>
         <PrimaryButton onClick={confirm} disabled={confirming || !myNumber.trim() || !memberId} tone="green">
-          {connected ? 'Save' : 'I sent a message'}
+          {confirming ? 'Saving…' : connected ? 'Save' : 'I sent a message'}
         </PrimaryButton>
+        {saveState === 'saved' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span className="ms" style={{ fontSize: 18, color: color.accentWhatsapp }}>check_circle</span>
+            <div style={{ font: `${weight.bold} 14px/1.3 Nunito, sans-serif`, color: ink(0.55) }}>Saved</div>
+          </div>
+        )}
+        {saveState === 'error' && (
+          <div style={{ font: `${weight.bold} 14px/1.3 Nunito, sans-serif`, color: '#b3564a', textAlign: 'center' }}>
+            Couldn't save — try again
+          </div>
+        )}
         {connected && (
           <PrimaryButton onClick={() => (editMode ? onDone?.() : onNext())} tone="green">Continue</PrimaryButton>
         )}
