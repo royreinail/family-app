@@ -22,7 +22,13 @@ export default function PhoneFrame({ children, padding = '56px 28px 40px', onBac
     >
       <div
         style={{
-          width: 390,
+          // Explicit responsive cap (min() of the 390px design width and
+          // whatever room is actually available) rather than a bare fixed
+          // 390 relying on this being a flex child that happens to shrink —
+          // works out the same on every browser tested here, but makes the
+          // real intent (cap at 390, shrink to fit below that) the actual
+          // rule instead of an implicit flexbox side effect.
+          width: 'min(390px, 100%)',
           height: 812,
           maxHeight: '92vh',
           boxSizing: 'border-box',

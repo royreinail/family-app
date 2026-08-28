@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { color, ink, weight, personPalette, kidIconChoices } from '../../../theme/tokens.js';
+import { color, ink, weight, personPickerColors, kidIconChoices } from '../../../theme/tokens.js';
 import ProgressDots from '../../../components/ProgressDots.jsx';
 import PrimaryButton from '../../../components/PrimaryButton.jsx';
 import { getFamilyMembers, createFamilyMember, updateFamilyMember, deleteFamilyMember } from '../../../api/client.js';
@@ -8,9 +8,12 @@ export const STEP_INDEX = 2;
 
 const BLANK_DRAFT = { id: null, name: '', calendarColor: '', kidIcon: kidIconChoices[0] };
 
+// Picker offers the curated calmer subset (Roy's call) — an existing member
+// already assigned one of the dropped bold colors keeps it (only the
+// suggestion for a *new* member steers into the calm set).
 function nextUnusedColor(members) {
   const used = new Set(members.map((m) => m.calendar_color));
-  return personPalette.find((c) => !used.has(c)) ?? personPalette[members.length % personPalette.length];
+  return personPickerColors.find((c) => !used.has(c)) ?? personPickerColors[members.length % personPickerColors.length];
 }
 
 function draftFromMember(m) {
@@ -90,7 +93,17 @@ export default function FamilyMembersStep({ totalSteps, onNext, editMode = false
         </div>
       </div>
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
+      {/* Real bug: on a short viewport (mobile landscape — a phone's real
+          height there is often ~350-400px), this section's fixed siblings
+          (title block above, Save button below) always claim their full
+          natural height first; a bare `flex: 1` with no floor then gets
+          whatever's left, which can legitimately compute to 0 — an
+          overflow:auto box at 0 height shows nothing at all, not even a
+          hint of a scrollbar, reading as "the whole edit card vanished."
+          minHeight guarantees a real, visible, scrollable sliver even in
+          that case; the outer PhoneFrame card (which already scrolls) picks
+          up the rest, so nothing is unreachable, just needs a scroll. */}
+      <div style={{ flex: 1, minHeight: 220, display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
         {!loading && members.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, padding: '2px 6px 4px' }}>
             {members.map((m) => (
@@ -149,23 +162,46 @@ export default function FamilyMembersStep({ totalSteps, onNext, editMode = false
           </div>
 
           <div style={{ font: `${weight.bold} 12.5px/1 Nunito, sans-serif`, color: ink(0.4), letterSpacing: '.06em', margin: '18px 0 10px' }}>COLOR</div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            {personPalette.map((c) => (
+          {/* Real bug: `display:flex` with no wrap on 11 fixed-40px circles
+              needs ~540px — nothing close to what a real phone's card width
+              (~250-290px content area) has. Nothing actually overflowed the
+              card's edge (default flex-shrink quietly squeezed every circle
+              down to whatever fit, no wrap needed) — but that shrank real
+              40px tap targets down to ~22px on a narrow phone, cramped and
+              easy to mis-tap, which is very plausibly what read as "the
+              icons overflow" even though a screenshot doesn't show a literal
+              overflow. `flexWrap: 'wrap'` + `flex: '0 0 auto'` per swatch
+              keeps every circle a real, fixed, tappable size and lets the
+              row spill onto a second line instead of silently shrinking. */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            {/* A member assigned one of the now-retired colors (Grape,
+                Peacock, Graphite, Tomato) before this change keeps it — but
+                if it's simply left out of the swatch row entirely, editing
+                them shows no ring selected anywhere, looking like nothing's
+                assigned. Append their current color as an extra, real,
+                pickable swatch so it stays visible and explicit until they
+                actually choose something else. */}
+            {(draft.calendarColor && !personPickerColors.includes(draft.calendarColor)
+              ? [...personPickerColors, draft.calendarColor]
+              : personPickerColors
+            ).map((c) => (
               <button
                 key={c}
                 onClick={() => setDraft((d) => ({ ...d, calendarColor: c }))}
                 aria-label={c}
                 style={{
+                  flex: '0 0 auto',
                   width: 40, height: 40, borderRadius: '50%', background: c, border: 'none', cursor: 'pointer',
-                  // Real bug: this used to dim unselected swatches to 0.55
-                  // opacity, so every swatch read as a lighter, washed-out
-                  // version of its actual color right up until it was picked
-                  // — the moment of selection visibly snapped to a darker,
-                  // more saturated shade, because THAT full-opacity value was
-                  // always what actually got applied to the Calendar event
-                  // (personPalette is the real hex, no separate "swatch tint").
-                  // Selection state now lives only in the ring, so what's
-                  // shown always matches what's assigned.
+                  // Real bug (separate from the sizing one above): this used
+                  // to dim unselected swatches to 0.55 opacity, so every
+                  // swatch read as a lighter, washed-out version of itself
+                  // right up until picked — the moment of selection visibly
+                  // snapped to a darker, more saturated shade, because THAT
+                  // full-opacity value was always what actually got applied
+                  // to the Calendar event (personPalette is the real hex, no
+                  // separate "swatch tint"). Selection state now lives only
+                  // in the ring, so what's shown always matches what's
+                  // assigned.
                   boxShadow: draft.calendarColor === c ? `0 0 0 3px ${color.surface}, 0 0 0 6px ${c}` : 'none',
                 }}
               />
@@ -173,7 +209,13 @@ export default function FamilyMembersStep({ totalSteps, onNext, editMode = false
           </div>
 
           <div style={{ font: `${weight.bold} 12.5px/1 Nunito, sans-serif`, color: ink(0.4), letterSpacing: '.06em', margin: '18px 0 10px' }}>ICON</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 7 }}>
+          {/* Real bug, same root cause as the color row: `repeat(7,1fr)`
+              always fits exactly (1fr can't overflow its own grid), but on
+              a narrow phone that "always fits" by squeezing every cell down
+              to ~30-36px — smaller than a comfortable tap target. minmax
+              gives each cell a real floor and lets extra icons wrap to more
+              rows instead of shrinking the whole row. */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(40px, 1fr))', gap: 7 }}>
             {kidIconChoices.map((icon) => (
               <button
                 key={icon}

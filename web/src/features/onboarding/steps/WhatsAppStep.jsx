@@ -18,6 +18,14 @@ export default function WhatsAppStep({ totalSteps, onNext, editMode = false, onD
   // only one, since that's who's almost always doing this step.
   const [memberId, setMemberId] = useState('');
   const [confirming, setConfirming] = useState(false);
+  // Distinguishes "still loading" from "loaded, genuinely empty" from
+  // "failed to load" — the picker below used to be gated on nothing but
+  // `members.length > 0`, so any of those three looked identical: no
+  // picker, no explanation. A fetch that rejects (network hiccup, a
+  // session edge case) previously left `members` silently `[]` forever
+  // with zero indication why — same failure shape as "you have no family
+  // members," but a different, actionable fix.
+  const [membersState, setMembersState] = useState('loading');
 
   useEffect(() => {
     getBotConfig().then((c) => {
@@ -27,11 +35,17 @@ export default function WhatsAppStep({ totalSteps, onNext, editMode = false, onD
       // require retyping it — only meaningful when there's exactly one.
       if (c.acceptedChatIds?.length === 1) setMyNumber(c.acceptedChatIds[0]);
     });
-    getFamilyMembers().then(({ members: list }) => {
-      setMembers(list);
-      const parents = list.filter((m) => m.is_parent);
-      if (parents.length === 1) setMemberId(parents[0].id);
-    });
+    getFamilyMembers()
+      .then(({ members: list }) => {
+        setMembers(list);
+        setMembersState('loaded');
+        const parents = list.filter((m) => m.is_parent);
+        if (parents.length === 1) setMemberId(parents[0].id);
+      })
+      .catch((err) => {
+        console.error('Failed to load family members for WhatsApp linking', err);
+        setMembersState('failed');
+      });
   }, []);
 
   async function confirm() {
@@ -43,18 +57,27 @@ export default function WhatsAppStep({ totalSteps, onNext, editMode = false, onD
   }
 
   const connected = config?.connected;
-  const memberPicker = members.length > 0 && (
-    <select
-      value={memberId}
-      onChange={(e) => setMemberId(e.target.value)}
-      style={{ font: `${weight.semibold} 15px/1.3 Nunito, sans-serif`, padding: '12px 16px', borderRadius: 16, border: `1px solid ${ink(0.15)}`, width: 260, textAlign: 'center' }}
-    >
-      <option value="" disabled>Whose number is this?</option>
-      {members.map((m) => (
-        <option key={m.id} value={m.id}>{m.name}</option>
-      ))}
-    </select>
-  );
+  const memberPicker =
+    members.length > 0 ? (
+      <select
+        value={memberId}
+        onChange={(e) => setMemberId(e.target.value)}
+        style={{ font: `${weight.semibold} 15px/1.3 Nunito, sans-serif`, padding: '12px 16px', borderRadius: 16, border: `1px solid ${ink(0.15)}`, width: 260, textAlign: 'center' }}
+      >
+        <option value="" disabled>Whose number is this?</option>
+        {members.map((m) => (
+          <option key={m.id} value={m.id}>{m.name}</option>
+        ))}
+      </select>
+    ) : membersState === 'failed' ? (
+      <div style={{ font: `${weight.semibold} 14px/1.4 Nunito, sans-serif`, color: '#b3564a', textAlign: 'center', maxWidth: 260 }}>
+        Couldn't load family members — reload this page and try again.
+      </div>
+    ) : membersState === 'loaded' ? (
+      <div style={{ font: `${weight.semibold} 14px/1.4 Nunito, sans-serif`, color: ink(0.45), textAlign: 'center', maxWidth: 260 }}>
+        Add a family member first (Settings → Family Members), then come back here to link their number.
+      </div>
+    ) : null;
 
   return (
     <>

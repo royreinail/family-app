@@ -48,7 +48,11 @@ export default function CalendarSettings({ onDone }) {
         </div>
       </div>
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
+      {/* Same landscape-collapse fix as FamilyMembersStep.jsx: without a
+          floor, a bare `flex: 1` here can compute to 0 on a short viewport
+          (mobile landscape), and an overflow:auto box at 0 height shows
+          nothing — not even a scrollbar. */}
+      <div style={{ flex: 1, minHeight: 160, display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
         {state.loading && (
           <div style={{ font: `${weight.semibold} 15px/1.4 Nunito, sans-serif`, color: ink(0.4), padding: '4px 6px' }}>Loading your calendars…</div>
         )}

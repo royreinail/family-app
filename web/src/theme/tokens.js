@@ -69,6 +69,22 @@ export const personPalette = [
   '#d60000', // Tomato
 ];
 
+// The curated subset actually offered in the family-member color picker
+// (Roy's call, live-testing feedback: the full 11 reads too "busy"/harsh on
+// the calendar itself). `personPalette` above stays the complete, unedited
+// 11 — it's still the authoritative hex<->colorId source (an existing
+// member assigned Grape or Tomato before this still resolves correctly;
+// only *new* picks are steered toward the calmer set). Drops Grape (vivid
+// magenta-purple), Peacock (vivid blue), Tomato (bright red) as the
+// boldest three, and Graphite — already reserved as the "no match/shared"
+// default color (resolveEventColorId's fallback), so offering it as a
+// deliberate personal choice would be confusing right alongside that
+// meaning. Keeps Tangerine (warm orange, not harsh) since it's already a
+// real family member's identity color.
+export const personPickerColors = personPalette.filter(
+  (c) => !['#8e24aa', '#039be5', '#616161', '#d60000'].includes(c)
+);
+
 export const kidIconChoices = ['🦄', '🚀', '⚽', '🐢', '🌸', '🐳', '🎨', '🦋'];
 
 export const font = {
@@ -114,5 +130,5 @@ export const shadow = {
 // count toward this — they're day boundaries, not activities.
 export const KID_DASHBOARD_ITEM_CAP = 5;
 
-export const theme = { color, ink, personPalette, kidIconChoices, font, weight, radius, spacing, shadow, KID_DASHBOARD_ITEM_CAP };
+export const theme = { color, ink, personPalette, personPickerColors, kidIconChoices, font, weight, radius, spacing, shadow, KID_DASHBOARD_ITEM_CAP };
 export default theme;

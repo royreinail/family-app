@@ -530,6 +530,78 @@ might be `undefined`; omit the key entirely instead of passing `undefined`.
 
 ---
 
+## Live testing round 3 (Aug 28 2026) — mobile layout + color picker follow-ups
+
+**Color picker curated to a calmer palette (✅ fixed, Roy's call).** Roy: the full 11 Google Calendar
+colors read too "busy"/harsh on the calendar itself. Google Calendar only accepts `colorId` from its
+own fixed 11 — there's no way to submit a custom pastel hex — so "calmer" can only mean offering a
+curated *subset* of those 11, never new color values. Presented three options (drop the 2 boldest, drop
+down to 5 clearly-muted ones, or no change); Roy picked the middle ground — `tokens.js`'s new
+`personPickerColors` drops Grape (vivid magenta), Peacock (vivid blue), Tomato (bright red), and
+Graphite (already reserved as the "no match/shared" default color — offering it as a deliberate personal
+choice too would be confusing right alongside that meaning), keeping Lavender/Sage/Flamingo/Banana/
+Tangerine/Blueberry/Basil. `personPalette` (the full 11, matching `googleColors.js` value-for-value)
+stays untouched and authoritative for hex↔colorId resolution — an existing member already assigned one
+of the dropped colors keeps resolving correctly; only *new* picks steer into the calmer set
+(`FamilyMembersStep.jsx`'s `nextUnusedColor` and the swatch row both switched to the curated list). If
+someone already has a dropped color, their current swatch is appended as an extra, real, pickable option
+in their own edit card — so editing them never shows *no* ring selected, which would've looked like their
+color went missing.
+
+**Mobile layout: color/icon rows silently shrinking instead of wrapping (✅ fixed) + a genuine landscape
+content-collapse bug (✅ fixed).** Roy: icons overflow the edge in portrait; almost nothing renders for
+Family Members edit in landscape except the header and Save. Investigated directly in the browser at
+real mobile viewport sizes rather than guessing from the code.
+
+Root cause of the "overflow": nothing technically overflowed the card's edge — the color row
+(`display:flex`, no wrap, 11 fixed-40px circles needing ~540px) and the icon grid (`repeat(7,1fr)`) both
+just quietly shrank via default flex-shrink to fit whatever width a real phone's card actually has
+(~250-290px content area after the card's own padding) — 40px circles down to ~22px, comfortably
+tappable icons down to ~30-36px. Nothing crashed or clipped, it just became cramped enough to read as
+broken. Fixed: the color row is now `flexWrap: 'wrap'` with `flex: '0 0 auto'` per swatch (real, fixed
+40px circles, spilling onto a second/third line instead of shrinking); the icon grid switched from
+`repeat(7,1fr)` to `repeat(auto-fill, minmax(40px,1fr))` (same idea — a real floor, wraps instead of
+shrinking). Verified in the browser at a real 375px-wide viewport: color swatches and icons both render
+at full, comfortable, uniform size now.
+
+Root cause of the landscape collapse: `PhoneFrame`'s card is a fixed `height:812` capped by
+`maxHeight:'92vh'` — in landscape (~375px real device height), that caps to ~345px. `FamilyMembersStep`'s
+own content area is `flex:1` with `overflowY:'auto'` and no minimum height; per the flexbox spec, an
+`overflow:auto` flex item's automatic minimum size is 0 (not its content's natural size) — so when the
+fixed-size siblings (title block, Save button) already claim more than the ~345px available, the
+flexible middle section gets squeezed to *literally* 0px, not just "small." An `overflow:auto` box at 0
+height renders nothing, not even a scrollbar — reading exactly as "everything but the header and Save
+vanished," confirmed by directly measuring `scrollHeight`/`clientHeight` in the browser. Fixed with a
+`minHeight: 220` floor on that section (160 for `CalendarSettings.jsx`, which had the identical
+vulnerable pattern, `flex:1`+`overflowY:auto`+no floor) — this forces the *outer* `PhoneFrame` card
+(which already has its own `overflowY:'auto'`) to pick up the overflow instead, making the whole card
+scrollable as a unit. Confirmed in the browser at a real 812×375 landscape viewport: content that used to
+render as literally nothing now shows a real, scrollable peek, and scrolling the card all the way down
+reaches the full color/icon rows and a working Save button. Also made `PhoneFrame`'s card width explicit
+(`width: 'min(390px, 100%)'` instead of a bare `width: 390` that happened to work only because it's a
+flex child that gets implicitly shrunk) — same rendered result on every browser tested here, but the
+intent is now a real CSS rule instead of a side effect of flexbox internals.
+
+**WhatsApp Connection's family-member picker — investigated, not reproduced, hardened regardless.** Roy
+reported the "Whose number is this?" picker (added for item 6's sender-linking fix) isn't showing at all
+in Settings → WhatsApp Connection, guessing it's onboarding-only. Traced the code path directly: the
+picker is gated only on `members.length > 0`, with no `editMode` distinction — should render identically
+in both places. Tested in the browser at a real mobile portrait viewport (375×812, not the taller desktop
+size used when this was first verified) with a real family member present, and it rendered and worked
+correctly — could not reproduce the bug as described. Found and fixed a real robustness gap while
+investigating, regardless: `getFamilyMembers()` had no `.catch()`, so a failed fetch for *any* reason
+(network hiccup, a session edge case) would leave the picker silently absent forever with zero
+indication why — identical in appearance to "you have no family members yet," a completely different,
+actionable situation. `WhatsAppStep.jsx` now distinguishes loading / loaded-but-empty ("Add a family
+member first...") / failed-to-load ("Couldn't load family members — reload and try again") and logs the
+real error to the console for the failed case. If this still doesn't show up for Roy after this deploys,
+the next step is a screenshot of the actual screen or a browser console check on his device — nothing
+further to chase blind without one of those.
+
+Frontend build clean throughout; backend untouched by any of these four (no server test suite changes needed).
+
+---
+
 ## "Family App" naming inventory (Aug 2026)
 
 Every place the literal product name "Family App" appears, so a future rename has a checklist instead of
