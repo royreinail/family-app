@@ -22,6 +22,11 @@ const GRAPH_API_VERSION = 'v20.0';
 const REENGAGEMENT_ERROR_CODE = 131047;
 const REMINDER_TEMPLATE_NAME = process.env.WHATSAPP_REMINDER_TEMPLATE_NAME || 'reminder_notification';
 const REMINDER_TEMPLATE_LANGUAGE = process.env.WHATSAPP_REMINDER_TEMPLATE_LANGUAGE || 'en_US';
+// Meta's WhatsApp Manager now requires a *named* variable (lowercase +
+// underscores, wrapped in {{ }}, not the older positional {{1}}) — must
+// match whatever name the approved template actually uses. See
+// family-app-architecture.md for the exact template text submitted.
+const REMINDER_TEMPLATE_PARAM_NAME = process.env.WHATSAPP_REMINDER_TEMPLATE_PARAM_NAME || 'reminder_text';
 
 export async function send(to, text, opts = {}) {
   const { phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID, token = process.env.WHATSAPP_SYSTEM_USER_TOKEN } = opts;
@@ -65,9 +70,9 @@ export function isReengagementWindowError(rawBody) {
 
 // A pre-approved template with exactly one body variable — see
 // family-app-architecture.md for the exact text submitted for Meta's
-// review. `bodyText` becomes {{1}} verbatim (e.g. "Reminder: pick up the
-// dry cleaning"), so the template's own fixed copy deliberately carries no
-// "Reminder:" prefix of its own — avoids double-prefixing when
+// review. `bodyText` becomes {{reminder_text}} verbatim (e.g. "Reminder:
+// pick up the dry cleaning"), so the template's own fixed copy deliberately
+// carries no "Reminder:" prefix of its own — avoids double-prefixing when
 // reminders.js's scheduleReminder already builds that into the title.
 export async function sendTemplate(to, bodyText, { phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID, token = process.env.WHATSAPP_SYSTEM_USER_TOKEN } = {}) {
   if (!phoneNumberId || !token) {
@@ -87,7 +92,12 @@ export async function sendTemplate(to, bodyText, { phoneNumberId = process.env.W
       template: {
         name: REMINDER_TEMPLATE_NAME,
         language: { code: REMINDER_TEMPLATE_LANGUAGE },
-        components: [{ type: 'body', parameters: [{ type: 'text', text: bodyText }] }],
+        components: [
+          {
+            type: 'body',
+            parameters: [{ type: 'text', parameter_name: REMINDER_TEMPLATE_PARAM_NAME, text: bodyText }],
+          },
+        ],
       },
     }),
   });
