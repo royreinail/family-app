@@ -20,6 +20,26 @@ function draftFromMember(m) {
   return { id: m.id, name: m.name, calendarColor: m.calendar_color, kidIcon: m.kid_icon };
 }
 
+// The Save Changes rule's nested case: this screen has a *local* save (one
+// member, stays on screen) and a *global* one (the whole screen, returns to
+// Settings Home) — kept as two distinct actions on purpose so they're never
+// confused, but the global action still needs to know whether the open
+// draft represents real, uncommitted work before deciding what "Continue"
+// vs "Save Changes" even means here.
+function isDraftPristine(draft, members) {
+  if (!draft.id) return draft.name.trim() === ''; // a fresh "+ New person" slot nobody's touched
+  const original = members.find((m) => m.id === draft.id);
+  if (!original) return true;
+  return draft.name === original.name && draft.calendarColor === original.calendar_color && draft.kidIcon === original.kid_icon;
+}
+
+// Color/icon always carry a default (nextUnusedColor / kidIconChoices[0]),
+// so in practice this only ever catches a cleared name — checked generally
+// anyway so it stays correct if that ever changes.
+function isDraftComplete(draft) {
+  return !!(draft.name.trim() && draft.calendarColor && draft.kidIcon);
+}
+
 /**
  * Reused as-is in Settings Home > Family Members (edit mode) — the same
  * component runs the onboarding step and the later single-screen edit.
@@ -36,6 +56,16 @@ export default function FamilyMembersStep({ totalSteps, onNext, editMode = false
   // actually deletes. Keeps the gentle, no-modal-dialog tone the rest of the
   // app uses instead of a native confirm() popup.
   const [confirmingRemove, setConfirmingRemove] = useState(false);
+  // Two independent error surfaces, on purpose: saveMember() previously had
+  // no error handling at all — a failed request (from either the local
+  // per-member button or the global reconcile-and-leave one) would throw
+  // unhandled, same class of bug the WhatsApp Connection save fix already
+  // addressed. localSaveError is for the per-member button; the global
+  // action's own message (below) covers both its own network failure and
+  // the "still needs a name" validation case.
+  const [localSaveError, setLocalSaveError] = useState('');
+  const [globalMessage, setGlobalMessage] = useState('');
+  const [savingGlobally, setSavingGlobally] = useState(false);
 
   useEffect(() => {
     getFamilyMembers().then(({ members }) => {
@@ -47,6 +77,8 @@ export default function FamilyMembersStep({ totalSteps, onNext, editMode = false
 
   function selectDraft(nextDraft) {
     setConfirmingRemove(false);
+    setLocalSaveError('');
+    setGlobalMessage('');
     setDraft(nextDraft);
   }
 
@@ -54,19 +86,60 @@ export default function FamilyMembersStep({ totalSteps, onNext, editMode = false
     selectDraft({ ...BLANK_DRAFT, calendarColor: nextUnusedColor(currentMembers), kidIcon: kidIconChoices[currentMembers.length % kidIconChoices.length] });
   }
 
-  async function saveMember() {
-    if (!draft.name.trim()) return;
+  // Persists the open draft (create or update) and returns the refreshed
+  // members list — the one place that actually talks to the API, shared by
+  // both the local per-member save and the global reconcile-and-leave
+  // action below, so they can't drift on what "save" means.
+  async function persistDraft() {
     const { name, calendarColor, kidIcon } = draft;
     if (draft.id) {
       const { member } = await updateFamilyMember(draft.id, { name, calendarColor, kidIcon });
       const updated = members.map((m) => (m.id === member.id ? member : m));
       setMembers(updated);
+      return updated;
+    }
+    const { member } = await createFamilyMember({ name, calendarColor, kidIcon });
+    const updated = [...members, member];
+    setMembers(updated);
+    return updated;
+  }
+
+  async function handleLocalSave() {
+    if (!draft.name.trim()) return;
+    setLocalSaveError('');
+    try {
+      const updated = await persistDraft();
       startNewPerson(updated);
-    } else {
-      const { member } = await createFamilyMember({ name, calendarColor, kidIcon });
-      const updated = [...members, member];
-      setMembers(updated);
-      startNewPerson(updated);
+    } catch (err) {
+      console.error('Failed to save family member', err);
+      setLocalSaveError("Couldn't save — try again.");
+    }
+  }
+
+  // The Save Changes rule's global action: pristine draft -> just leave
+  // (nothing to reconcile); a complete, edited draft -> save it, then leave
+  // in the same tap; an incomplete, edited draft -> say so and stay, rather
+  // than either silently discarding real typed-in work or silently saving
+  // something half-finished (Roy's call).
+  async function handleGlobalContinue() {
+    setGlobalMessage('');
+    if (isDraftPristine(draft, members)) {
+      editMode ? onDone?.() : onNext();
+      return;
+    }
+    if (!isDraftComplete(draft)) {
+      setGlobalMessage(`${draft.name.trim() || 'This person'} still needs a name before they can be saved.`);
+      return;
+    }
+    setSavingGlobally(true);
+    try {
+      await persistDraft();
+      editMode ? onDone?.() : onNext();
+    } catch (err) {
+      console.error('Failed to save family member', err);
+      setGlobalMessage("Couldn't save — try again.");
+    } finally {
+      setSavingGlobally(false);
     }
   }
 
@@ -232,7 +305,7 @@ export default function FamilyMembersStep({ totalSteps, onNext, editMode = false
           </div>
 
           <button
-            onClick={saveMember}
+            onClick={handleLocalSave}
             disabled={!draft.name.trim()}
             style={{
               marginTop: 16, width: '100%', height: 44, borderRadius: 22, border: 'none',
@@ -243,6 +316,11 @@ export default function FamilyMembersStep({ totalSteps, onNext, editMode = false
           >
             {draft.id ? 'Save changes' : '+ Add to family'}
           </button>
+          {localSaveError && (
+            <div style={{ marginTop: 8, font: `${weight.bold} 13.5px/1.3 Nunito, sans-serif`, color: '#b3564a', textAlign: 'center' }}>
+              {localSaveError}
+            </div>
+          )}
 
           {draft.id && (
             <button
@@ -260,9 +338,28 @@ export default function FamilyMembersStep({ totalSteps, onNext, editMode = false
         </div>
       </div>
 
-      <div style={{ marginTop: 14 }}>
-        <PrimaryButton onClick={() => (editMode ? onDone?.() : onNext())} disabled={members.length === 0}>
-          {editMode ? 'Save' : `Done — ${members.length} ${members.length === 1 ? 'person' : 'people'}`}
+      <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
+        {globalMessage && (
+          <div style={{ font: `${weight.bold} 14px/1.3 Nunito, sans-serif`, color: '#b3564a', textAlign: 'center' }}>
+            {globalMessage}
+          </div>
+        )}
+        {/* The Save Changes rule, applied to the *global* action here: the
+            open draft pristine -> "Continue"/"Done — N people" (just
+            navigates); edited and complete -> "Save Changes" (saves, then
+            navigates in one tap); edited and incomplete -> still "Save
+            Changes", but clicking surfaces globalMessage above instead of
+            leaving. Never silently discards real typed-in work, never
+            silently saves a half-finished entry. */}
+        <PrimaryButton
+          onClick={handleGlobalContinue}
+          disabled={savingGlobally || (members.length === 0 && isDraftPristine(draft, members))}
+        >
+          {savingGlobally
+            ? 'Saving…'
+            : isDraftPristine(draft, members)
+              ? (editMode ? 'Continue' : `Done — ${members.length} ${members.length === 1 ? 'person' : 'people'}`)
+              : 'Save Changes'}
         </PrimaryButton>
       </div>
     </>

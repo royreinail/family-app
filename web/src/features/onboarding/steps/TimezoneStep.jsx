@@ -21,9 +21,30 @@ export default function TimezoneStep({ totalSteps, onNext, editMode = false, onD
   const detected = initialTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [tz, setTz] = useState(detected);
   const [picking, setPicking] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  // The Save Changes rule: in edit mode, only a real change from the
+  // already-saved timezone needs a network call at all — onboarding has no
+  // "already saved" baseline yet (this is the first time it's being set),
+  // so it always treats confirming as the real action, same as before.
+  const isDirty = !editMode || tz !== initialTimezone;
 
   async function confirm() {
-    await setTimezone(tz);
+    setSaving(true);
+    setError('');
+    try {
+      await setTimezone(tz);
+      editMode ? onDone?.() : onNext();
+    } catch (err) {
+      console.error('Failed to save timezone', err);
+      setError("Couldn't save — try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function goNext() {
     editMode ? onDone?.() : onNext();
   }
 
@@ -61,7 +82,12 @@ export default function TimezoneStep({ totalSteps, onNext, editMode = false, onD
         )}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center' }}>
-        <PrimaryButton onClick={confirm}>{editMode ? 'Save' : "Yes, that's right"}</PrimaryButton>
+        <PrimaryButton onClick={isDirty ? confirm : goNext} disabled={saving}>
+          {saving ? 'Saving…' : !editMode ? "Yes, that's right" : isDirty ? 'Save Changes' : 'Continue'}
+        </PrimaryButton>
+        {error && (
+          <div style={{ font: `${weight.bold} 14px/1.3 Nunito, sans-serif`, color: '#b3564a', textAlign: 'center' }}>{error}</div>
+        )}
         {!picking && (
           <button
             onClick={() => setPicking(true)}

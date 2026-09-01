@@ -32,14 +32,16 @@ export default function WhatsAppStep({ totalSteps, onNext, editMode = false, onD
   const [savedNumber, setSavedNumber] = useState('');
   const [savedMemberId, setSavedMemberId] = useState('');
   const [confirming, setConfirming] = useState(false);
-  // Real bug: Save gave zero feedback either way — when the number was
-  // already connected (the exact re-link case this screen exists for),
-  // "Connected" and the button's own label were already showing before the
-  // click, so a successful save changed nothing visible at all. A failed
-  // save was worse: confirm() had no try/catch, so a thrown request left
-  // `confirming` stuck true forever — the button disabled with no
-  // explanation, indistinguishable from "still saving."
-  const [saveState, setSaveState] = useState('idle'); // 'idle' | 'saved' | 'error'
+  // The "Save Changes" rule (applied consistently across Settings screens):
+  // one bottom button whose label tracks state — "Continue" when clean
+  // (just navigates, no network call), "Save Changes" when dirty (saves,
+  // then navigates in the same tap, replacing the old separate Save +
+  // Continue pair). Only 'error' is still shown on this screen itself —
+  // a successful save always leaves the screen (the navigation *is* the
+  // confirmation), so there's nothing to show once it's worked. A failed
+  // save has to stay put and say so, or it's a stuck disabled button with
+  // no explanation (the original bug here).
+  const [saveState, setSaveState] = useState('idle'); // 'idle' | 'error'
   // Distinguishes "still loading" from "loaded, genuinely empty" from
   // "failed to load" — the picker below used to be gated on nothing but
   // `members.length > 0`, so any of those three looked identical: no
@@ -94,18 +96,29 @@ export default function WhatsAppStep({ totalSteps, onNext, editMode = false, onD
 
   async function confirm() {
     if (!myNumber.trim() || !memberId) return;
+    // Captured before this save resolves — deciding what happens *after*
+    // saving needs to know what was true *before* it, not the value
+    // `connected` will hold once state updates land mid-flight.
+    const wasAlreadyConnected = connected;
     setConfirming(true);
     setSaveState('idle');
     try {
       const updated = await confirmBotConfig(myNumber.trim(), memberId);
       setConfig((c) => ({ ...c, connected: updated.connected, acceptedChatIds: updated.acceptedChatIds, senderMappings: updated.senderMappings }));
-      // Move the baseline to what was just saved — the whole point of
-      // tracking it is so the Save button disappears once there's nothing
-      // left to save, not just that the save succeeded.
+      // Move the baseline to what was just saved — the button's own label
+      // (Continue vs. Save Changes) reads directly off this, so moving it
+      // is what makes the button correctly stop offering to save again.
       setSavedNumber(myNumber.trim());
       setSavedMemberId(memberId);
-      setSaveState('saved');
-      setTimeout(() => setSaveState((s) => (s === 'saved' ? 'idle' : s)), 3000);
+      if (wasAlreadyConnected) {
+        // "Save Changes" on an existing connection: save-and-return is one
+        // action, same as every other Settings screen under this rule.
+        editMode ? onDone?.() : onNext();
+      }
+      // First-time connect: deliberately stays put and shows the confirmed
+      // "Connected" state instead of immediately leaving — a real milestone
+      // worth seeing, not just a field edit. The button becomes "Continue"
+      // on its own once `connected`/the saved baseline update above land.
     } catch (err) {
       console.error('Failed to save WhatsApp connection', err);
       setSaveState('error');
@@ -190,28 +203,22 @@ export default function WhatsAppStep({ totalSteps, onNext, editMode = false, onD
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center' }}>
-        {/* Not connected yet: always offer "I sent a message" (there's no
-            saved baseline to compare against). Already connected: only
-            offer Save while the form actually differs from what's saved —
-            nothing to click when there's nothing to save. */}
-        {(!connected || isDirty) && (
-          <PrimaryButton onClick={confirm} disabled={confirming || !myNumber.trim() || !memberId} tone="green">
-            {confirming ? 'Saving…' : connected ? 'Save' : 'I sent a message'}
-          </PrimaryButton>
-        )}
-        {saveState === 'saved' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span className="ms" style={{ fontSize: 18, color: color.accentWhatsapp }}>check_circle</span>
-            <div style={{ font: `${weight.bold} 14px/1.3 Nunito, sans-serif`, color: ink(0.55) }}>Saved</div>
-          </div>
-        )}
+        {/* The Save Changes rule, one button: not connected yet -> "I sent
+            a message" (its own milestone, stays put on success to show the
+            Connected state rather than immediately leaving); connected and
+            clean -> "Continue" (just navigates, nothing to save); connected
+            and dirty -> "Save Changes" (saves, then navigates in one tap). */}
+        <PrimaryButton
+          onClick={connected && !isDirty ? () => (editMode ? onDone?.() : onNext()) : confirm}
+          disabled={confirming || !myNumber.trim() || !memberId}
+          tone="green"
+        >
+          {confirming ? 'Saving…' : !connected ? 'I sent a message' : isDirty ? 'Save Changes' : 'Continue'}
+        </PrimaryButton>
         {saveState === 'error' && (
           <div style={{ font: `${weight.bold} 14px/1.3 Nunito, sans-serif`, color: '#b3564a', textAlign: 'center' }}>
             Couldn't save — try again
           </div>
-        )}
-        {connected && (
-          <PrimaryButton onClick={() => (editMode ? onDone?.() : onNext())} tone="green">Continue</PrimaryButton>
         )}
         {!editMode && (
           <button onClick={onNext} style={{ background: 'none', border: 'none', cursor: 'pointer', font: `${weight.bold} 15px/1 Nunito, sans-serif`, color: ink(0.42) }}>

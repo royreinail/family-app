@@ -11,13 +11,19 @@ import { getCalendarList, setSelectedCalendar } from '../../api/client.js';
 export default function CalendarSettings({ onDone }) {
   const [state, setState] = useState({ loading: true, connected: false, calendars: [], error: null });
   const [selected, setSelected] = useState(null);
+  // The Save Changes rule's baseline — what's actually persisted right now,
+  // compared against `selected` to decide whether Continue can just
+  // navigate or Save Changes actually has something to send.
+  const [savedCalendarId, setSavedCalendarId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   useEffect(() => {
     getCalendarList()
       .then(({ connected, calendars, selectedCalendarId, error }) => {
         setState({ loading: false, connected, calendars, error: error ?? null });
         setSelected(selectedCalendarId);
+        setSavedCalendarId(selectedCalendarId);
       })
       .catch((err) => {
         // The list-fetch route only ever throws (rather than resolving with
@@ -31,12 +37,21 @@ export default function CalendarSettings({ onDone }) {
       });
   }, []);
 
+  const isDirty = selected !== savedCalendarId;
+
   async function save() {
     if (!selected) return;
     setSaving(true);
-    await setSelectedCalendar(selected);
-    setSaving(false);
-    onDone?.();
+    setSaveError('');
+    try {
+      await setSelectedCalendar(selected);
+      onDone?.();
+    } catch (err) {
+      console.error('Failed to save calendar selection', err);
+      setSaveError("Couldn't save — try again.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -99,9 +114,12 @@ export default function CalendarSettings({ onDone }) {
         ))}
       </div>
 
-      <div style={{ marginTop: 14 }}>
-        <PrimaryButton onClick={save} disabled={!selected || saving}>
-          {saving ? 'Saving…' : 'Save'}
+      <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
+        {saveError && (
+          <div style={{ font: `${weight.bold} 14px/1.3 Nunito, sans-serif`, color: '#b3564a', textAlign: 'center' }}>{saveError}</div>
+        )}
+        <PrimaryButton onClick={isDirty ? save : () => onDone?.()} disabled={!selected || saving}>
+          {saving ? 'Saving…' : isDirty ? 'Save Changes' : 'Continue'}
         </PrimaryButton>
       </div>
     </>

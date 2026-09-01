@@ -772,6 +772,64 @@ still 103/103.
 
 ---
 
+## Design system: the Save Changes rule (Aug 2026)
+
+Roy: "keep this saving behavior across all of the app, lets call it save changes... lets have suggest how
+to tackle both scenarios that will be applied for all and will create a rule for future ux decision
+points for this app." Standing rule for every future edit/settings screen, not just a description of
+what shipped this round — read this section before adding a new one.
+
+**The rule itself — one bottom button per screen, its label is the state:**
+- **Clean** (nothing differs from what's actually persisted): button reads **"Continue"** and only
+  navigates back — no network call, since there's nothing to save.
+- **Dirty** (something differs): button reads **"Save Changes"** — saves, then navigates back, as one
+  atomic action on success. Never leaves two taps where one will do.
+- **On error:** stay on the screen (never navigate away on a failed save), show a plain inline message
+  in the same style everywhere (`color: '#b3564a'`, bold 14px, centered), button stays actionable so the
+  next tap retries. A save action with no error handling at all was a real, repeated bug this session
+  (WhatsApp Connection's original Save, `CalendarSettings`'s `save()`, `FamilyMembersStep`'s
+  `saveMember()` all had this independently) — every screen following this rule gets a `try`/`catch`
+  around its save call as part of adopting it, not as an afterthought.
+- A screen with no prior persisted value to compare against (a first-time WhatsApp connect, onboarding's
+  first-time timezone pick) has no "clean" state yet — its button stays a distinct, real call-to-action
+  ("I sent a message", "Yes, that's right") rather than a premature "Continue"/"Save Changes" that would
+  be misleading before anything exists to compare.
+
+**Scenario 2 — nested list editors (Family Members is the only one today, but the pattern generalizes to
+any future "manage a list of things" screen):** two saves, kept deliberately distinct so they're never
+confused —
+- **Local** (per-item): unchanged from how it already worked — "Save changes" / "+ Add to family" commits
+  *that one item* and stays on the screen so the user keeps managing the list.
+- **Global** (the whole screen): follows the *same* Continue/Save Changes labeling as scenario 1, but its
+  dirty check also has to account for an open, uncommitted local draft. Roy's call on that exact edge
+  case: **if the open draft is complete** (has everything a real entry needs — in practice just a name,
+  since color/icon always carry a default), **auto-save it** as part of leaving, no extra step. **If it's
+  incomplete** (started typing, no name), **don't** silently discard the typed-in work and **don't**
+  silently save something half-finished — surface a plain inline message ("{name or 'This person'} still
+  needs a name before they can be saved") and stay put. `isDraftPristine`/`isDraftComplete`
+  (`FamilyMembersStep.jsx`) are the two checks this decision is built on; keep both when adapting this to
+  a future list-editor screen, not just a single "has it changed" flag.
+
+**Explicitly exempt — don't force this pattern onto these, and don't assume a future similar screen
+needs it either without checking first:**
+- **PIN entry** (`PinStep.jsx`) — submitting a new PIN *is* the action; there's no old plaintext value to
+  diff against (only a hash is ever stored), so "clean vs. dirty" isn't a meaningful question here.
+- **Pure view/action screens with nothing persisted to edit** (`InviteCoParentStep.jsx`) — just a "Done"
+  button that navigates, no save concept, nothing to compare.
+
+**Applied this round:** `WhatsAppStep.jsx`, `TimezoneStep.jsx`, `CalendarSettings.jsx` (scenario 1, all
+three previously had a static "Save"/"Continue" pair or a single always-on "Save" with no dirty check and
+no error handling), `FamilyMembersStep.jsx` (scenario 2, both the per-item/global distinction and the
+uncommitted-draft handling above). Verified directly in the browser for `WhatsAppStep`/`TimezoneStep`/
+`FamilyMembersStep` (first-connect stays put and shows "Connected" before offering Continue; a clean
+reload correctly shows Continue, not a stray Save; changing a field brings Save Changes back
+immediately; an incomplete family-member draft blocks with the message instead of silently discarding or
+saving; a complete one auto-saves and leaves) — `CalendarSettings` follows the identical, by-then-proven
+pattern but couldn't be exercised live without a real Google Calendar connection. Full backend suite
+untouched throughout, still 103/103 (frontend-only across all of this).
+
+---
+
 ## "Family App" naming inventory (Aug 2026)
 
 Every place the literal product name "Family App" appears, so a future rename has a checklist instead of
