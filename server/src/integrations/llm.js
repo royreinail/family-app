@@ -17,7 +17,18 @@ const EXTRACTION_TOOL = {
       },
       person: { type: ['string', 'null'] },
       category: { type: ['string', 'null'] },
-      reminder_requested: { type: 'boolean' },
+      reminder_requested: {
+        type: 'boolean',
+        // Real bug (item 10): this used to have no description of its own
+        // at all, relying entirely on one line in the system prompt anchored
+        // to a single English phrase ("remind me to..."). Roy's own
+        // diagnosis: "handled as an intent-classification problem, not a
+        // keyword match" — restated here too since the field-level
+        // description is what the model weighs most directly when deciding
+        // this specific value, in any phrasing, in any language.
+        description:
+          "true when the sender's underlying intent is a personal nudge/reminder at a future moment — they want to be personally pinged, not necessarily create something everyone sees on the shared calendar. Judge intent, not a fixed phrase: \"remind me to...\", \"don't let me forget to...\", \"ping me about...\", \"note to self...\", Hebrew \"תזכיר לי\"/\"שלא אשכח\", or any other natural phrasing expressing the same thing, all count. A plain statement of a scheduled event with no such request (\"soccer practice Thursday 5pm\") is false, even if it has a date and time.",
+      },
       reminder_datetime: { type: ['string', 'null'], description: 'ISO 8601 datetime, when reminder_requested is true' },
       audience: {
         type: 'string',
@@ -44,8 +55,10 @@ const SYSTEM_PROMPT = `You extract plain factual fields from a short family mess
 WhatsApp text, a photographed flyer/schedule (read the image directly; it may be in any language,
 including Hebrew — extract fields in whatever language the source uses, don't translate), or a
 forwarded email. Do not decide what should happen with the message — only report what is literally
-present. If a field isn't stated, use null. Only set reminder_requested to true if the message
-explicitly asks to be reminded (e.g. "remind me to..."). Resolve relative dates ("Thursday",
+present. If a field isn't stated, use null. Set reminder_requested by judging the sender's actual
+intent — do they want a personal nudge/reminder at a future moment? — not by matching a fixed
+phrase; this can be asked for in many ways and in any language (see reminder_requested's own
+description for real examples). Resolve relative dates ("Thursday",
 "tomorrow") against the provided reference date. Set audience to 'parent_only' only when the message
 is clearly not relevant to show a child (a parent's own appointment, a work meeting, "date night"
 with no child involved); default to 'family' whenever it's unclear or the message concerns the

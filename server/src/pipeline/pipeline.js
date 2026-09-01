@@ -306,23 +306,38 @@ async function handleCorrection({ log, replyToExtractionLogId, text, calendar, m
     });
   }
 
-  // Item 6 — a quoted reply naming a family member corrects who a
-  // recently-written event is for (same 10-minute-style window as the
-  // no-quote path — see applyPersonCorrection's caller in 3c above for the
-  // reasoning; a quote arriving long after the fact is unusual enough to
-  // leave the old, probably-forgotten event alone rather than recolor it).
+  // Item 6 (and item 9's fix) — a quoted reply naming a family member
+  // corrects who that specific event is for. No age window here on
+  // purpose: quoting a message is already an unambiguous reference to
+  // exactly that event, no matter how long ago it was written — a window
+  // only exists to guard the *bare*, no-quote path (3c above), where the
+  // ambiguity a window protects against is real (ANY unquoted message
+  // naming someone could be unrelated). Applying that same window to an
+  // explicit quote was a real bug: "editing the assignee of an existing
+  // event via reply doesn't work" for anything past a few minutes old,
+  // even though quoting it already says exactly which event is meant.
   const personMatch = matchBarePersonCorrection(text, familyMembers);
   if (personMatch && original.state === 'written' && original.resulting_event_ref?.provider === 'google') {
-    const ageMs = Date.now() - new Date(original.updated_at).getTime();
-    if (ageMs <= 10 * 60 * 1000) {
-      return applyPersonCorrection({ log, original, matchedMember: personMatch, calendar, messenger, senderIdentifier, pool });
-    }
+    return applyPersonCorrection({ log, original, matchedMember: personMatch, calendar, messenger, senderIdentifier, pool });
   }
 
-  const updatedCandidate = { ...original.ai_candidate, ...(newTime ? { time: newTime } : {}) };
+  // Item 9's other half of the same bug report: this fallback used to run
+  // unconditionally whenever neither a time nor a person correction
+  // applied, sending a confident "Updated — {title} now at {time}" even
+  // though `newTime` was null and nothing had actually changed —
+  // misleadingly claiming success on a correction that was never
+  // understood at all. Say so plainly instead.
+  if (!newTime) {
+    await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+    const reply = "I couldn't tell what to change from that — try a new time, or just the person's name.";
+    await messenger.send(senderIdentifier, reply);
+    return { outcome: 'correction_failed', original, reply, log };
+  }
+
+  const updatedCandidate = { ...original.ai_candidate, time: newTime };
 
   const ref = original.resulting_event_ref;
-  if (ref?.provider === 'google' && newTime) {
+  if (ref?.provider === 'google') {
     const startDateTime = `${updatedCandidate.date}T${newTime}:00`;
     const end = addOneHour(updatedCandidate.date, newTime);
     await calendar.updateEvent(ref.external_id, {
@@ -338,7 +353,7 @@ async function handleCorrection({ log, replyToExtractionLogId, text, calendar, m
   );
   await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
 
-  const reply = `Updated — ${updatedCandidate.title || 'that'} now at ${newTime || updatedCandidate.time}.`;
+  const reply = `Updated — ${updatedCandidate.title || 'that'} now at ${newTime}.`;
   await messenger.send(senderIdentifier, reply);
   return { outcome: 'corrected', original, updatedCandidate, reply, log };
 }

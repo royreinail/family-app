@@ -830,6 +830,80 @@ untouched throughout, still 103/103 (frontend-only across all of this).
 
 ---
 
+## Live testing round 4 — items 9 & 10 (Aug/Sep 2026)
+
+**Item 9 — editing the assignee of an existing event via reply didn't work, quoted or not (✅ fixed,
+three real bugs, not one).** Roy: "this fails whether the reply quotes the original message or not."
+Investigated the real code fresh rather than assuming the earlier item 6 mechanism was intact:
+
+1. **The quoted-reply path reused the bare-reply path's 10-minute window for no real reason.** The
+   window exists to guard the *bare* (unquoted) correction against genuine ambiguity — an unquoted name
+   sent later could plausibly be unrelated. A **quoted** reply doesn't have that problem: quoting a
+   specific message already unambiguously identifies which event is meant, no matter how old it is.
+   Applying the same 10-minute cutoff there meant "editing the assignee of an *existing* event" (very
+   plausibly more than 10 minutes old) silently failed every time. Removed the age check from the quoted
+   path in `pipeline.js`'s `handleCorrection`; the bare path's window is untouched and still guards the
+   case that actually needs it.
+2. **A quoted reply that matched neither a time nor a person correction got a confidently wrong reply.**
+   `handleCorrection`'s fallback used to send `"Updated — {title} now at {time}"` *unconditionally*
+   whenever neither the time-correction nor person-correction branch matched — even when `newTime` was
+   `null` and nothing had actually changed. A correction attempt the bot didn't understand looked
+   identical to one that succeeded. Now replies honestly ("I couldn't tell what to change from that...")
+   and leaves the original event untouched when nothing was recognized.
+3. **Hebrew commonly attaches a one-letter preposition directly to a name with no space at all** —
+   "לגאיה" ("to Gaia") is one token, ל + גאיה, not two words. `matchBarePersonCorrection`'s "the whole
+   message must reduce to exactly the name" check correctly found "גאיה" as a substring but then failed
+   on the single leftover "ל", since neither filler list covered a bare grammatical prefix. Given Roy's
+   real usage is substantially Hebrew, this is very plausibly why the bare-reply path failed just as
+   often as the quoted one. Now forgives exactly one leftover Hebrew prefix letter (ל/ב/מ/ה/ו/כ/ש) —
+   still rejects a longer leftover, so this stays a narrow grammar allowance, not a loophole. Also
+   broadened the English filler list slightly (assign/reassign/make/should/switch/set) to tolerate a
+   little more natural phrasing than the original bare-name-plus-tiny-filler-set design.
+
+`tests/regression/forwardedSenderDefault.test.js`: a quoted correction a full day after the event was
+written still succeeds; a quoted reply matching neither pattern gets the honest failure reply and leaves
+the event untouched; the Hebrew-prefix case with both a positive and a "still correctly rejects a longer
+leftover" boundary case; broadened English filler phrasing coverage. **Not changed, and worth noting
+explicitly:** the bare (unquoted) path's 10-minute window itself — only what happens *within* it (the
+matching logic) was fixed. If corrections still feel too narrow for the unquoted case specifically,
+that's a real, separate design question (how long should an unquoted correction stay "live"?) worth its
+own discussion, not something guessed at here.
+
+**Item 10 — reminder requests not recognized, created as regular events instead (✅ fixed).** Roy: "This
+should be handled as an intent-classification problem, not a keyword match... natural phrasing rather
+than requiring a specific trigger word." Confirmed exactly that on inspection: `llm.js`'s
+`reminder_requested` field had **no schema-level description at all**, relying entirely on one system
+prompt sentence — "Only set reminder_requested to true if the message explicitly asks to be reminded
+(e.g. 'remind me to...')" — anchored to one English phrase, not intent. Rewrote both: the schema field
+now carries its own real description (judge intent, not phrasing; several varied English/Hebrew examples
+— "don't let me forget to...", "ping me about...", "תזכיר לי", "שלא אשכח" — explicitly "any other natural
+phrasing... counts"), and the system prompt sentence points to it rather than repeating the old
+single-example framing. The real extraction call this feeds isn't unit-tested (same boundary-layer
+convention as every other real LLM/Calendar call in this codebase) — `tests/regression/reminderRouting.test.js`
+adds a prompt-text assertion confirming the old anchored wording is actually gone, which is what's
+directly verifiable here; the classification quality itself needs a real live retest with varied natural
+phrasing, in both languages, the same way image extraction and other LLM-judgment fixes have needed
+retesting this session.
+
+Two secondary, code-level (fully testable) fixes bundled in since they touch the exact same mechanism:
+- **`isReminderOnlyMessage` used a raw string-prefix comparison** between `reminder_datetime` and
+  `` `${date}T${time}` `` — trailing seconds or other formatting the LLM's ISO output might carry (e.g.
+  `"09:00:00.000Z"` vs. plain `"09:00"`) would silently break an otherwise-correct match, misrouting a
+  real pure reminder to a Calendar event. Now compares only date+hour+minute (`slice(0,16)`), robust to
+  that formatting variance.
+- **The confirmation for a real event that *also* carries a separate reminder request never mentioned
+  the reminder at all** — `scheduleReminder` ran right after `confirmReply` was already sent, with no
+  trace of it in what the user actually read. This is the item's other explicit requirement ("the
+  confirmation reply must explicitly state that a reminder was set"). `confirmReply`'s new
+  `reminderNote` appends "(I'll also remind you at {time})" whenever `reminder_requested` +
+  `reminder_datetime` are present — the *pure*-reminder case already routes to the distinctly-worded
+  `reminderConfirmReply` ("Got it — I'll remind you..."), so there's no risk of double-mentioning the
+  same reminder from two different code paths.
+
+Full suite: 108/108 passing. Frontend untouched.
+
+---
+
 ## "Family App" naming inventory (Aug 2026)
 
 Every place the literal product name "Family App" appears, so a future rename has a checklist instead of

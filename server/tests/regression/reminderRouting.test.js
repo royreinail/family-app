@@ -11,6 +11,7 @@ import { seedFamily } from '../setup/seedFamily.js';
 import { createFakeCalendar, createFakeMessenger, createFakeLlm } from '../setup/fakes.js';
 import { handleIncomingMessage } from '../../src/pipeline/pipeline.js';
 import * as tasksRepo from '../../src/repositories/tasks.js';
+import { buildSystemPrompt } from '../../src/integrations/llm.js';
 
 let pool;
 
@@ -78,4 +79,54 @@ test('a real event plus an unrelated reminder still writes to Calendar (fixture 
   assert.equal(calendar.events.size, 1);
   assert.ok(result.reminder, 'a separate reminder-carrier task should still be scheduled');
   assert.equal(result.reminder.reminder_datetime.toISOString(), '2026-08-26T20:00:00.000Z');
+  // Item 10's other requirement: the confirmation must say a reminder was
+  // set too — before this fix, a real event carrying a separate reminder
+  // request confirmed with zero mention that a reminder was scheduled at
+  // all, even though scheduleReminder ran right after sending it.
+  assert.match(result.reply, /remind/i, 'the confirmation must mention the reminder, not just the event');
+});
+
+// Item 10: the LLM's ISO reminder_datetime can carry trailing seconds
+// (":00") that a raw string-prefix comparison against `${date}T${time}`
+// (no seconds) would never equal, even when both plainly describe the
+// same moment — silently misrouting a pure reminder to a real Calendar
+// event instead. isReminderOnlyMessage compares only date+hour+minute.
+test('a pure reminder is still recognized when reminder_datetime carries trailing seconds', async () => {
+  const { family, knownSender } = await seedFamily(pool);
+  const calendar = createFakeCalendar();
+  const messenger = createFakeMessenger();
+  // Deliberately no "tomorrow"/"today" in the text — overrideObviousRelativeDate
+  // would recompute `date` against the real current date and silently
+  // desync it from this test's hardcoded reminder_datetime, same fragility
+  // this file's own first test already flags for exactly that reason.
+  const llm = createFakeLlm({
+    'Remind me to call the dentist Thursday at 9am': {
+      title: 'call the dentist', date: '2026-08-29', time: '09:00', person: null, category: null,
+      reminder_requested: true, reminder_datetime: '2026-08-29T09:00:00.000Z',
+    },
+  });
+
+  const result = await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Remind me to call the dentist Thursday at 9am', externalMessageId: 'wamid.reminder-routing-3' },
+    { pool, llmExtract: llm.extract, calendar, messenger }
+  );
+
+  assert.equal(result.destination, 'tasks', 'trailing seconds/offset formatting must not defeat the pure-reminder match');
+  assert.equal(calendar.events.size, 0);
+});
+
+// The actual API call this prompt feeds isn't unit-tested (same reasoning
+// as every other real LLM/Calendar call in this codebase) — this just
+// confirms the wording fix itself is actually in the prompt the model
+// sees. Roy's own diagnosis: "handled as an intent-classification problem,
+// not a keyword match" — this asserts the prompt no longer anchors
+// reminder_requested to a single fixed English phrase.
+test('the system prompt frames reminder_requested as intent, not a fixed trigger phrase', () => {
+  const prompt = buildSystemPrompt([]);
+  assert.match(prompt, /judging the sender's actual\s+intent/);
+  assert.doesNotMatch(
+    prompt,
+    /explicitly asks to be reminded/,
+    'must not still anchor to the old single-phrase wording'
+  );
 });

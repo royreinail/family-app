@@ -70,12 +70,28 @@ test('applyForwardedSenderDefault only kicks in for a forwarded message with no 
 
 test('matchBarePersonCorrection is strict about what counts as just a name', () => {
   const members = [{ name: 'Theo' }, { name: 'Mia' }];
-  for (const yes of ['Theo', ' Theo ', 'for Theo', 'actually Theo', "it's Theo", 'change it to Theo']) {
+  for (const yes of ['Theo', ' Theo ', 'for Theo', 'actually Theo', "it's Theo", 'change it to Theo', 'assign it to Theo', 'make it Theo', 'switch to Theo']) {
     assert.equal(matchBarePersonCorrection(yes, members)?.name, 'Theo', `${JSON.stringify(yes)} should match Theo`);
   }
   for (const no of ['', 'thanks!', 'Dance class for Mia Friday 4pm', 'not sure', 'Theo and Mia']) {
     assert.equal(matchBarePersonCorrection(no, members), null, `${JSON.stringify(no)} should not match`);
   }
+});
+
+// Item 9's real bug: Hebrew commonly attaches a one-letter preposition
+// directly to a name with no space ("לגאיה" = ל + גאיה, "to Gaia", one
+// token) — the name-match strips גאיה but used to leave a single leftover
+// letter that failed the "must reduce to exactly empty" check, silently
+// breaking a completely natural Hebrew correction reply.
+test('matchBarePersonCorrection handles a Hebrew preposition attached directly to the name with no space', () => {
+  const members = [{ name: 'גאיה' }, { name: 'תיאו' }];
+  for (const yes of ['גאיה', 'לגאיה', 'בגאיה', 'לתיאו', 'זה בשביל גאיה', 'לא, זה בשביל תיאו']) {
+    assert.equal(matchBarePersonCorrection(yes, members)?.name, yes.includes('תיאו') ? 'תיאו' : 'גאיה', `${JSON.stringify(yes)} should match`);
+  }
+  // Only a *single* leftover prefix letter is forgiven — a longer leftover
+  // (two compounded prefix letters here) still correctly fails, so this
+  // stays a narrow grammar allowance, not a loophole for arbitrary prefix text.
+  assert.equal(matchBarePersonCorrection('שלגאיה', members), null);
 });
 
 // Real, repeated bug report: the confirmation kept leaving out who an
@@ -229,6 +245,78 @@ test('a quoted reply naming a different member corrects the same way', async () 
   assert.equal(second.outcome, 'corrected');
   const [eventId] = calendar.events.keys();
   assert.equal(calendar.events.get(eventId).colorId, hexToColorId(theo.calendar_color));
+});
+
+// Item 9: "editing the assignee of an existing event via reply doesn't
+// work... regardless of whether the reply quotes the original message."
+// Root cause for the quoted path specifically: it reused the same
+// 10-minute window built for the *bare* (unquoted) path, where a window
+// genuinely guards against ambiguity — but quoting a specific message is
+// already an unambiguous reference to that exact event, no matter how long
+// ago it was written. An "existing event" a user wants to correct is very
+// plausibly well past 10 minutes old.
+test('a quoted reply corrects the person no matter how long ago the event was written', async () => {
+  const { family, knownSender, parent } = await seedFamily(pool);
+  const theo = await familyMembersRepo.create({ familyId: family.id, name: 'Theo', calendarColor: '#e6ab84', kidIcon: '🚀' }, pool);
+  const familyMembers = [parent, theo];
+  const calendar = createFakeCalendar();
+  const messenger = createFakeMessenger();
+  const llm = createFakeLlm({
+    'Birthday party Sunday 4pm': {
+      title: 'Birthday party', date: '2026-08-30', time: '16:00', person: null, category: 'birthday',
+      reminder_requested: false, reminder_datetime: null,
+    },
+  });
+
+  const first = await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Birthday party Sunday 4pm', externalMessageId: 'wamid.fwd-9a', wasForwarded: true },
+    { pool, llmExtract: llm.extract, calendar, messenger, familyMembers, senderFamilyMember: parent }
+  );
+
+  // Simulate the event having been written a full day ago -- far past the
+  // 10-minute window that (correctly) still bounds the bare/unquoted path.
+  await pool.query(`update extraction_log set updated_at = now() - interval '1 day' where id = $1`, [first.log.id]);
+
+  const second = await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Theo', externalMessageId: 'wamid.fwd-9b', replyToExtractionLogId: first.log.id },
+    { pool, llmExtract: llm.extract, calendar, messenger, familyMembers, senderFamilyMember: parent }
+  );
+
+  assert.equal(second.outcome, 'corrected', 'a quoted reply is an unambiguous reference regardless of age');
+  const [eventId] = calendar.events.keys();
+  assert.equal(calendar.events.get(eventId).colorId, hexToColorId(theo.calendar_color));
+  assert.equal(calendar.events.get(eventId).personId, theo.id);
+});
+
+// Item 9's other half: this fallback used to send a confident "Updated —
+// {title} now at {time}" even when nothing about the reply was actually
+// understood (no time, no matching person) -- silently claiming success on
+// a correction attempt that changed nothing at all.
+test('a quoted reply that matches neither a time nor a real family member gets an honest failure reply, not a fake "Updated"', async () => {
+  const { family, knownSender } = await seedFamily(pool);
+  const calendar = createFakeCalendar();
+  const messenger = createFakeMessenger();
+  const llm = createFakeLlm({
+    'Birthday party Sunday 4pm': {
+      title: 'Birthday party', date: '2026-08-30', time: '16:00', person: null, category: 'birthday',
+      reminder_requested: false, reminder_datetime: null,
+    },
+  });
+
+  const first = await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Birthday party Sunday 4pm', externalMessageId: 'wamid.fwd-9c' },
+    { pool, llmExtract: llm.extract, calendar, messenger, familyMembers: [] }
+  );
+
+  const second = await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: 'make it bigger', externalMessageId: 'wamid.fwd-9d', replyToExtractionLogId: first.log.id },
+    { pool, llmExtract: llm.extract, calendar, messenger, familyMembers: [] }
+  );
+
+  assert.equal(second.outcome, 'correction_failed');
+  assert.doesNotMatch(second.reply, /Updated/i, 'must not claim a change was made when nothing was understood');
+  const [eventId] = calendar.events.keys();
+  assert.equal(calendar.events.get(eventId).startDateTime, '2026-08-30T16:00:00', 'the original event must be untouched');
 });
 
 test('a bare person-name message outside the correction window is NOT applied', async () => {

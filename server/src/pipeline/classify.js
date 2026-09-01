@@ -53,8 +53,19 @@ export function applyForwardedSenderDefault(candidate, { wasForwarded, senderFam
 // mention a family member's name elsewhere ("Dance class for Mia Friday")
 // must still go through normal extraction, not get swallowed as a
 // correction to something else entirely.
-const PERSON_CORRECTION_FILLER = /\b(for|actually|it's|its|it|change|to|that's|thats|instead|please|not|this|is)\b/gi;
+const PERSON_CORRECTION_FILLER =
+  /\b(for|actually|it's|its|it|change|to|that's|thats|instead|please|not|this|is|assign|assigned|reassign|make|should|switch|set)\b/gi;
 const PERSON_CORRECTION_FILLER_HE = /עבור|במקום|זה|זאת|בשביל|תשני|תשנה|לא|בעצם/g;
+// Real bug (item 9): Hebrew commonly attaches a one-letter preposition
+// directly to a name with no space at all — "לגאיה" ("to Gaia") is one
+// token, ל + גאיה. matchSingleFamilyMember still finds "גאיה" as a
+// substring, but stripping just that substring from "לגאיה" leaves a
+// single leftover letter ("ל") that isn't in either filler list and isn't
+// punctuation — the residue check used to fail on exactly the kind of
+// bare reply a Hebrew-speaking user would naturally send, which is very
+// plausibly why "regardless of whether the correction is sent as a quoted
+// reply or a plain follow-up message" it "doesn't work" for Hebrew replies.
+const HEBREW_PREFIX_LETTERS = 'לבמהוכש';
 export function matchBarePersonCorrection(text, familyMembers) {
   const raw = (text || '').trim();
   const match = matchSingleFamilyMember(raw, familyMembers);
@@ -65,7 +76,8 @@ export function matchBarePersonCorrection(text, familyMembers) {
     .replace(PERSON_CORRECTION_FILLER, ' ')
     .replace(PERSON_CORRECTION_FILLER_HE, ' ')
     .replace(/[\s,.\-–—:;!?"'()[\]]/g, '');
-  return residue.length === 0 ? match : null;
+  const isJustHebrewPrefix = residue.length === 1 && HEBREW_PREFIX_LETTERS.includes(residue);
+  return residue.length === 0 || isJustHebrewPrefix ? match : null;
 }
 
 // Icon fallback for reading an *already-written* event from before this
@@ -115,7 +127,11 @@ export function factsFromCandidate(candidate) {
 function isReminderOnlyMessage(candidate) {
   if (!candidate.reminder_requested || !candidate.reminder_datetime) return false;
   if (!candidate.date || !candidate.time) return false;
-  return candidate.reminder_datetime.startsWith(`${candidate.date}T${candidate.time}`);
+  // Compare only date+hour+minute ("YYYY-MM-DDTHH:MM"), not a raw string
+  // prefix of the full reminder_datetime — the LLM's ISO output can carry
+  // seconds or other trailing formatting a strict prefix match would trip
+  // over even when the two values plainly describe the same moment.
+  return candidate.reminder_datetime.slice(0, 16) === `${candidate.date}T${candidate.time}`;
 }
 
 // The Calendar `createEvent` payload for a candidate whose date AND time
@@ -183,6 +199,19 @@ function personNote(candidate) {
   return ` for ${candidate.person}${assumedSuffix}`;
 }
 
+// Item 10 — a real event that *also* carries a separately-requested
+// reminder (fixture 7's shape: "remind me to pack the gym bag Thursday
+// night, gym class is Friday 9am") used to confirm with zero mention that
+// a reminder was scheduled at all — pipeline.js calls scheduleReminder
+// right after sending this reply, but nothing in the reply said so. Only
+// relevant here: the *pure*-reminder case (isPureReminder) routes to
+// reminderConfirmReply instead, which already states it explicitly, so
+// there's no risk of double-mentioning the same reminder.
+function reminderNote(candidate) {
+  if (!candidate.reminder_requested || !candidate.reminder_datetime) return '';
+  return ` (I'll also remind you at ${candidate.reminder_datetime.slice(11, 16)})`;
+}
+
 export function confirmReply(candidate) {
   const when = formatDateTime(candidate.date, candidate.time);
   const title = candidate.title || 'Event';
@@ -190,7 +219,7 @@ export function confirmReply(candidate) {
   // correctly captured (or not) is visible in the confirmation itself,
   // not just in the Calendar event a person has to go check separately.
   const range = candidate.end_time ? `${when}–${candidate.end_time}` : when;
-  return `${title}, ${range}${personNote(candidate)} — added ✅`;
+  return `${title}, ${range}${personNote(candidate)}${reminderNote(candidate)} — added ✅`;
 }
 
 export function qualifyReply(candidate) {
