@@ -110,6 +110,17 @@ create table if not exists extraction_log (
   )
 );
 
+-- A2 (cancel/reschedule, enhancement backlog): a parked "which one do you
+-- mean?" state, same idempotent-ALTER pattern as families.invite_code
+-- above for a constraint change applying to an already-deployed database
+-- (CREATE TABLE IF NOT EXISTS above doesn't retroactively touch an
+-- existing table's constraint, so the widened list has to be a real ALTER,
+-- not just an edit to the CHECK list above).
+alter table extraction_log drop constraint if exists extraction_log_state_check;
+alter table extraction_log add constraint extraction_log_state_check check (
+  state in ('received','extracted','written','needs_clarification','needs_time','needs_disambiguation','stopped','failed','corrected','undone')
+);
+
 -- Dedup key is scoped per family, excluding soft-deleted rows, matching the
 -- duplicate_message gate's query ("prior row with the same external_message_id, excluding self").
 create index if not exists extraction_log_dedup_idx

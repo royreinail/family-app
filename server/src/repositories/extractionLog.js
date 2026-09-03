@@ -108,3 +108,45 @@ export async function findRecentWrittenCalendarEventBySender(
   const ageMs = Date.now() - new Date(row.updated_at).getTime();
   return ageMs <= withinMs ? row : null;
 }
+
+// A2 (cancel/reschedule) — the event a cancel/reschedule request resolves
+// to is found by *description*, not by "the most recent thing this sender
+// wrote" (findLatestWrittenBySender, used by the "undo" command) — could be
+// any past write, not necessarily the latest one. Needed so canceling an
+// event also retires its own log row (state 'undone', matching "undo"'s own
+// convention) instead of leaving a stale 'written' row pointing at a
+// Calendar event that no longer exists.
+export async function findByCalendarEventId({ familyId, externalId }, pool = getPool()) {
+  const { rows } = await pool.query(
+    `select * from extraction_log
+     where family_id = $1 and deleted_at is null and state = 'written'
+       and resulting_event_ref->>'provider' = 'google'
+       and resulting_event_ref->>'external_id' = $2
+     order by created_at desc limit 1`,
+    [familyId, externalId]
+  );
+  return rows[0] ?? null;
+}
+
+// A2 — the sender was just shown a numbered "which one?" list and we're
+// deciding whether their next bare reply is picking one (see
+// commands.js's bareDisambiguationChoice). Same recency-window reasoning
+// as findRecentPendingFollowUp — a bare number sent hours later, after
+// other messages, shouldn't silently resolve a stale, probably-forgotten
+// prompt.
+export async function findRecentPendingDisambiguation(
+  { familyId, senderIdentifier, withinMs = 30 * 60 * 1000 },
+  pool = getPool()
+) {
+  const { rows } = await pool.query(
+    `select * from extraction_log
+     where family_id = $1 and sender_identifier = $2 and deleted_at is null
+       and state = 'needs_disambiguation'
+     order by created_at desc limit 1`,
+    [familyId, senderIdentifier]
+  );
+  const row = rows[0];
+  if (!row) return null;
+  const ageMs = Date.now() - new Date(row.created_at).getTime();
+  return ageMs <= withinMs ? row : null;
+}

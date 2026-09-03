@@ -31,10 +31,36 @@ const QUERY_TOOL = {
   },
 };
 
+// A2 (cancel/reschedule) — a third distinct intent alongside "create" and
+// "what's already there": "change or remove something that already
+// exists." `event_description` is deliberately free text, not a structured
+// match — the real lookup (matching this against actual Calendar events,
+// with disambiguation when more than one plausibly matches) is
+// deterministic app code, not something to ask the model to resolve.
+const MANAGEMENT_TOOL = {
+  name: 'record_management',
+  description:
+    'Record a request to cancel or reschedule an event that already exists — "cancel dance class Thursday", "move it to 17:00", "בטלי את חוג הריקוד". Not for creating something new (use record_extraction) or asking what exists (use record_query).',
+  input_schema: {
+    type: 'object',
+    properties: {
+      management_action: { type: 'string', enum: ['cancel', 'reschedule'] },
+      event_description: {
+        type: 'string',
+        description: 'Whatever the sender said to identify the event — title/activity words, who it\'s for, any date mentioned — verbatim enough to search real events with. Not a structured field, just the identifying text.',
+      },
+      date_hint: { type: ['string', 'null'], description: 'ISO 8601 date if one was given or implied ("Thursday", "מחר") to help narrow the search; null if the message gives no date at all.' },
+      new_date: { type: ['string', 'null'], description: 'ISO 8601 date to move the event to — only for management_action "reschedule", only when a new date was actually given (may be the same as the original date if only the time changed).' },
+      new_time: { type: ['string', 'null'], description: '24h HH:MM to move the event to — only for management_action "reschedule", only when a new time was actually given.' },
+    },
+    required: ['management_action', 'event_description', 'date_hint', 'new_date', 'new_time'],
+  },
+};
+
 const EXTRACTION_TOOL = {
   name: 'record_extraction',
   description:
-    'Record the structured fields extracted from a forwarded family message that describes something to create — a real event, task, or reminder. Not for a question asking what already exists (use record_query for that).',
+    'Record the structured fields extracted from a forwarded family message that describes something to create — a real event, task, or reminder. Not for a question asking what already exists (use record_query), and not for cancelling/changing something that already exists (use record_management).',
   input_schema: {
     type: 'object',
     properties: {
@@ -84,11 +110,13 @@ const EXTRACTION_TOOL = {
 const SYSTEM_PROMPT = `You extract plain factual fields from a short family message — forwarded
 WhatsApp text, a photographed flyer/schedule (read the image directly; it may be in any language,
 including Hebrew — extract fields in whatever language the source uses, don't translate), or a
-forwarded email. First decide which of the two tools actually fits: record_query when the sender
+forwarded email. First decide which of the three tools actually fits: record_query when the sender
 is asking what's already on the calendar ("what's on tomorrow?", "מה יש לגאיה ביום שלישי?", "any
-plans Friday?") — a real question, not a statement — versus record_extraction for a message
-describing something to create. Judge this the same way as reminder_requested below: by intent, in
-any phrasing or language, not a fixed trigger word. Do not decide what should happen with the
+plans Friday?") — a real question, not a statement; record_management when the sender wants to
+cancel or change something that already exists ("cancel dance class Thursday", "move it to
+17:00", "בטלי את"); record_extraction for a message describing something new to create. Judge this
+the same way as reminder_requested below: by intent, in any phrasing or language, not a fixed
+trigger word. Do not decide what should happen with the
 message beyond that one choice — only report what is literally present. If a field isn't stated,
 use null. Set reminder_requested by judging the sender's actual
 intent — do they want a personal nudge/reminder at a future moment? — not by matching a fixed
@@ -121,11 +149,12 @@ their name in it (e.g. prefer "Shopping" over "Shopping with Shai" when person i
 /**
  * @param {string} rawInput - message text, or a caption/empty string when `opts.image` is set
  * @param {{referenceDate?: string, model?: string, image?: {base64: string, mimeType: string}, familyMemberNames?: string[]}} [opts]
- * @returns {Promise<{type:'capture',title:string|null,date:string|null,time:string|null,end_time:string|null,person:string|null,category:string|null,reminder_requested:boolean,reminder_datetime:string|null,audience:'family'|'parent_only',activity_icon:string} | {type:'query',date_from:string,date_to:string,person:string|null}>}
+ * @returns {Promise<{type:'capture',title:string|null,date:string|null,time:string|null,end_time:string|null,person:string|null,category:string|null,reminder_requested:boolean,reminder_datetime:string|null,audience:'family'|'parent_only',activity_icon:string} | {type:'query',date_from:string,date_to:string,person:string|null} | {type:'management',management_action:'cancel'|'reschedule',event_description:string,date_hint:string|null,new_date:string|null,new_time:string|null}>}
  *   `type` distinguishes a capture (create something) from a read-back
- *   query (A1) — callers that only ever handled captures before this can
- *   keep treating a missing/`'capture'` type exactly as before; every
- *   original capture field is still present at the top level, unchanged.
+ *   query (A1) or a cancel/reschedule request (A2) — callers that only
+ *   ever handled captures before this can keep treating a missing/
+ *   `'capture'` type exactly as before; every original capture field is
+ *   still present at the top level, unchanged.
  */
 export async function extract(rawInput, opts = {}) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -155,11 +184,11 @@ export async function extract(rawInput, opts = {}) {
       max_tokens: 512,
       system: buildSystemPrompt(opts.familyMemberNames),
       messages: [{ role: 'user', content }],
-      tools: [EXTRACTION_TOOL, QUERY_TOOL],
+      tools: [EXTRACTION_TOOL, QUERY_TOOL, MANAGEMENT_TOOL],
       // 'any' (not 'tool'/name-forced, not 'auto') — forces exactly one
       // tool call every time (never a free-text non-tool reply, same
       // guarantee the old forced single-tool call had), but lets the model
-      // choose *which* of the two tools actually fits this message.
+      // choose *which* of the three tools actually fits this message.
       tool_choice: { type: 'any' },
     }),
   });
@@ -170,5 +199,6 @@ export async function extract(rawInput, opts = {}) {
   const data = await res.json();
   const toolUse = data.content?.find((c) => c.type === 'tool_use');
   if (!toolUse) throw new Error('LLM response did not include the expected tool call.');
-  return { ...toolUse.input, type: toolUse.name === 'record_query' ? 'query' : 'capture' };
+  const type = toolUse.name === 'record_query' ? 'query' : toolUse.name === 'record_management' ? 'management' : 'capture';
+  return { ...toolUse.input, type };
 }

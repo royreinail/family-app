@@ -10,7 +10,7 @@ import * as extractionLogRepo from '../repositories/extractionLog.js';
 import * as tasksRepo from '../repositories/tasks.js';
 import * as botConfigRepo from '../repositories/botConfig.js';
 import { evaluateRules } from '../rules/engine.js';
-import { matchCommand, helpReply, formatTaskList, parseCorrectedTime, parseCorrectedTimeRange, isBareTimeAnswer } from './commands.js';
+import { matchCommand, helpReply, formatTaskList, parseCorrectedTime, parseCorrectedTimeRange, isBareTimeAnswer, bareDisambiguationChoice } from './commands.js';
 import {
   factsFromCandidate,
   confirmReply,
@@ -18,6 +18,9 @@ import {
   clarifyReply,
   reminderConfirmReply,
   addOneHour,
+  addDays,
+  naiveDateTimeToUtcMs,
+  utcMsToNaiveDateTime,
   todayInTimeZone,
   overrideObviousRelativeDate,
   overrideExplicitAudienceKeyword,
@@ -31,6 +34,10 @@ import {
   matchMembersToEvent,
   matchSingleFamilyMember,
   formatQueryReply,
+  matchEventsByDescription,
+  formatDisambiguationReply,
+  formatNoMatchReply,
+  formatManagementConfirmReply,
 } from './classify.js';
 import { scheduleReminder } from './reminders.js';
 
@@ -148,6 +155,23 @@ export async function handleIncomingMessage(message, deps) {
     }
   }
 
+  // 3e. A2 — resolves the "which one?" disambiguation a management request
+  // (cancel/reschedule) parked when its description matched more than one
+  // event (see handleManagementRequest below). A bare number is the answer
+  // to *that* prompt specifically — same "strict, whole-message-must-reduce"
+  // philosophy as isBareTimeAnswer/matchBarePersonCorrection, so a genuinely
+  // new message that happens to contain a digit elsewhere doesn't get
+  // misread as picking an option.
+  if (!replyToExtractionLogId) {
+    const choice = bareDisambiguationChoice(text);
+    if (choice) {
+      const pending = await extractionLogRepo.findRecentPendingDisambiguation({ familyId, senderIdentifier }, pool);
+      if (pending) {
+        return resolveDisambiguation({ log, pending, choice, calendar, messenger, senderIdentifier, pool, familyId });
+      }
+    }
+  }
+
   // 4. LLM extraction — the LLM's one job, wrapped for transient failures.
   let candidate;
   try {
@@ -164,6 +188,12 @@ export async function handleIncomingMessage(message, deps) {
   // make sense for "tell me what's already there."
   if (candidate.type === 'query') {
     return handleReadBackQuery({ log, candidate, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers, calendarConnected });
+  }
+  // A2 — same reasoning: "cancel dance class Thursday" is a fundamentally
+  // different shape from a capture, branches off before the capture-only
+  // steps for the same reason.
+  if (candidate.type === 'management') {
+    return handleManagementRequest({ log, candidate, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers, familyId, calendarConnected });
   }
 
   // "today"/"tomorrow" are unambiguous enough to not trust to LLM date
@@ -312,6 +342,146 @@ async function handleReadBackQuery({ log, candidate, calendar, messenger, sender
   await messenger.send(senderIdentifier, reply);
   await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
   return { outcome: 'query', events: visible, reply, log };
+}
+
+// A2 — finds the event(s) a cancel/reschedule description matches and acts
+// (or asks which one, per D-2). Deliberately does NOT apply
+// shouldShowOnKidBoard the way handleReadBackQuery does: audience only
+// controls what the *kid dashboard* shows, not what a parent can manage
+// through the bot — a parent_only event must still be cancellable/
+// reschedulable here.
+async function handleManagementRequest({ log, candidate, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers, familyId, calendarConnected }) {
+  if (!calendarConnected) {
+    await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+    await messenger.send(senderIdentifier, "Google Calendar isn't connected yet — connect it from Settings first.");
+    return { outcome: 'query_failed', log };
+  }
+
+  const { management_action: managementAction, event_description: description, date_hint: dateHint, new_date: newDate, new_time: newTime } = candidate;
+
+  // Real gap this guards against: without it, "move dance class" (no target
+  // given at all) would fall through to performManagementAction, which
+  // defaults a missing new_date/new_time to the event's *own current*
+  // date/time — silently "rescheduling" it to exactly where it already
+  // was. Ask instead of pretending that's a real answer. A full multi-turn
+  // "reschedule to when?" follow-up (parking state, merging the answer) is
+  // out of scope for this pass — the common real phrasing ("move dance
+  // class to 5pm") already gives a target in the same message.
+  if (managementAction === 'reschedule' && !newDate && !newTime) {
+    await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+    const reply = `What time should I move "${description}" to?`;
+    await messenger.send(senderIdentifier, reply);
+    return { outcome: 'query_failed', reply, log };
+  }
+
+  // An explicit date hint narrows the search to that exact day; otherwise
+  // search forward from today — canceling/rescheduling something in the
+  // past is unusual enough that a 60-day forward window covers the
+  // realistic case without an unbounded, ever-slower query.
+  const today = todayInTimeZone(timeZone);
+  const searchFrom = dateHint || today;
+  const searchTo = dateHint || addDays(today, 60);
+  const timeMin = localDateTimeToUtcIso(searchFrom, '00:00', timeZone);
+  const timeMax = localDateTimeToUtcIso(searchTo, '23:59', timeZone);
+
+  let items;
+  try {
+    items = await calendar.listEvents({ timeMin, timeMax });
+  } catch (err) {
+    await extractionLogRepo.updateState(log.id, { state: 'failed', error: String(err?.message || err) }, pool);
+    await messenger.send(senderIdentifier, "Couldn't check the calendar just now — try again in a bit.");
+    return { outcome: 'failed', error: err, log };
+  }
+
+  const matches = matchEventsByDescription(items, { titleHint: description, dateHint });
+
+  if (matches.length === 0) {
+    await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+    const reply = formatNoMatchReply(description);
+    await messenger.send(senderIdentifier, reply);
+    return { outcome: 'query_failed', reply, log };
+  }
+
+  if (matches.length > 1) {
+    // Capped so the numbered list (and the DB row holding it) stays a
+    // reasonable, actually-readable size — a description vague enough to
+    // match more than a handful of events needs narrowing in conversation
+    // anyway, not an exhaustive list.
+    const capped = matches.slice(0, 5);
+    await extractionLogRepo.updateState(
+      log.id,
+      { state: 'needs_disambiguation', aiCandidate: { managementAction, candidates: capped, newDate, newTime } },
+      pool
+    );
+    const reply = formatDisambiguationReply(capped, managementAction);
+    await messenger.send(senderIdentifier, reply);
+    return { outcome: 'needs_disambiguation', reply, log };
+  }
+
+  return performManagementAction({ log, familyId, managementAction, item: matches[0], newDate, newTime, calendar, messenger, senderIdentifier, pool });
+}
+
+// Resolves a "which one?" prompt (see handleManagementRequest above) once
+// the sender replies with a bare number.
+async function resolveDisambiguation({ log, pending, choice, calendar, messenger, senderIdentifier, pool, familyId }) {
+  const { managementAction, candidates, newDate, newTime } = pending.ai_candidate;
+  const chosen = candidates[choice - 1];
+  if (!chosen) {
+    await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+    const reply = `That wasn't one of the options — reply with a number from 1 to ${candidates.length}.`;
+    await messenger.send(senderIdentifier, reply);
+    return { outcome: 'query_failed', reply, log };
+  }
+  await extractionLogRepo.updateState(pending.id, { state: 'stopped' }, pool);
+  return performManagementAction({ log, familyId, managementAction, item: chosen, newDate, newTime, calendar, messenger, senderIdentifier, pool });
+}
+
+// Shared tail of both the single-match path and the disambiguation-resolved
+// path: actually cancel or reschedule the real Calendar event, then reply.
+// Cancel also retires the original extraction_log row (state 'undone',
+// same convention the "undo" command already uses) if one still exists for
+// this event — otherwise a stale 'written' row would keep pointing at a
+// Calendar event that no longer exists, which a later item-6 person-
+// correction attempt could try (and fail) to patch. Reschedule leaves the
+// original log's own stored candidate as-is — a known, minor bookkeeping
+// gap (its cached date/time won't reflect the move) accepted to keep this
+// already-large feature's scope bounded; the real Calendar event, which is
+// what actually matters, is correctly updated either way.
+async function performManagementAction({ log, familyId, managementAction, item, newDate, newTime, calendar, messenger, senderIdentifier, pool }) {
+  try {
+    if (managementAction === 'cancel') {
+      await calendar.deleteEvent(item.id);
+      const originalLog = await extractionLogRepo.findByCalendarEventId({ familyId, externalId: item.id }, pool);
+      if (originalLog) await extractionLogRepo.updateState(originalLog.id, { state: 'undone' }, pool);
+    } else {
+      const originalStart = item.start?.dateTime;
+      const originalEnd = item.end?.dateTime;
+      const date = newDate || originalStart?.slice(0, 10);
+      const time = newTime || originalStart?.slice(11, 16);
+      // naiveDateTimeToUtcMs/utcMsToNaiveDateTime, not plain `new Date()` —
+      // these are naive wall-clock strings (no offset), and a bare
+      // `new Date(naiveString)` parses using the *server process's* local
+      // timezone. A real bug caught writing this: round-tripping through
+      // `new Date()` + `.toISOString()` silently shifted the computed end
+      // time by the sandbox's own UTC offset.
+      const durationMs =
+        originalStart && originalEnd
+          ? naiveDateTimeToUtcMs(originalEnd) - naiveDateTimeToUtcMs(originalStart)
+          : 60 * 60 * 1000;
+      const newStart = `${date}T${time}:00`;
+      const newEnd = utcMsToNaiveDateTime(naiveDateTimeToUtcMs(newStart) + durationMs);
+      await calendar.updateEvent(item.id, { start: { dateTime: newStart }, end: { dateTime: newEnd } });
+    }
+  } catch (err) {
+    await extractionLogRepo.updateState(log.id, { state: 'failed', error: String(err?.message || err) }, pool);
+    await messenger.send(senderIdentifier, 'Something went wrong making that change — try again in a bit.');
+    return { outcome: 'failed', error: err, log };
+  }
+
+  await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+  const reply = formatManagementConfirmReply(managementAction, item, { newDate, newTime });
+  await messenger.send(senderIdentifier, reply);
+  return { outcome: 'managed', managementAction, item, reply, log };
 }
 
 async function handleCommand({ command, log, familyId, senderIdentifier, calendar, messenger, pool }) {

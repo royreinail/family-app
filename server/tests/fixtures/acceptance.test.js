@@ -203,7 +203,12 @@ test('6. reply-correction ("no, 5pm") edits the linked event via extraction_log.
   assert.equal(updatedLog.ai_candidate.time, '17:00');
 
   const eventId = updatedLog.resulting_event_ref.external_id;
-  assert.equal(calendar.events.get(eventId).start.dateTime, '2026-08-25T17:00:00');
+  // The fake's updateEvent unwraps the real Google patch shape
+  // (start.dateTime/end.dateTime) into the same flat startDateTime field
+  // createEvent stores directly — one consistent internal shape for every
+  // field the fake tracks (see fakes.js), not two depending on how the
+  // event was last written.
+  assert.equal(calendar.events.get(eventId).startDateTime, '2026-08-25T17:00:00');
 });
 
 test('7. explicit reminder ask -> confirms the write AND schedules a reminder at reminder_datetime', async () => {

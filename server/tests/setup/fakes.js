@@ -12,19 +12,25 @@ export function createFakeCalendar() {
       events.set(id, evt);
       return { provider: 'google', external_id: id };
     },
-    // A real patch (see calendar.js's updateEvent / pipeline.js's
-    // applyPersonCorrection) nests app metadata under
-    // `extendedProperties.private`, matching Google's real wire format —
-    // but createEvent above stores the flat calendarPayloadFromCandidate
-    // shape directly (personId/audience/activityIcon all top-level, for
-    // easy test assertions like `written.personId`). Unwrap that nesting
-    // here too, onto the same flat record, so a test can assert
-    // `written.personId` consistently regardless of whether it came from
-    // the original create or a later correction.
+    // A real patch nests things under Google's actual wire shapes —
+    // `extendedProperties.private` for app metadata (calendar.js's
+    // updateEvent / pipeline.js's applyPersonCorrection), `start.dateTime`
+    // / `end.dateTime` for a time change (handleCorrection's time-fix
+    // branch, A2's reschedule) — but createEvent above stores the flat
+    // calendarPayloadFromCandidate shape directly (startDateTime/
+    // endDateTime/personId/audience/activityIcon all top-level, for easy
+    // test assertions like `written.startDateTime`). Unwrap both nestings
+    // here too, onto the same flat record, so a test can assert flat
+    // fields consistently regardless of whether they came from the
+    // original create or a later patch.
     updateEvent: async (id, patch) => {
-      const { extendedProperties, ...rest } = patch;
+      const { extendedProperties, start, end, ...rest } = patch;
       const flatPrivateProps = extendedProperties?.private ?? {};
-      events.set(id, { ...events.get(id), ...rest, ...flatPrivateProps });
+      const flatTimeProps = {
+        ...(start?.dateTime ? { startDateTime: start.dateTime } : {}),
+        ...(end?.dateTime ? { endDateTime: end.dateTime } : {}),
+      };
+      events.set(id, { ...events.get(id), ...rest, ...flatPrivateProps, ...flatTimeProps });
       return { provider: 'google', external_id: id };
     },
     deleteEvent: async (id) => {

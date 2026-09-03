@@ -87,3 +87,18 @@ export function isBareTimeAnswer(text) {
     .replace(/[\s,.\-–—:;!?"'()[\]]/g, '');
   return residue.length === 0;
 }
+
+// A2 (cancel/reschedule) — resolves a disambiguation prompt ("which one?
+// 1. Dance class 16:00  2. Dance rehearsal 18:00") the same strict way
+// isBareTimeAnswer resolves a "What time?" prompt: the whole message must
+// reduce to just the number picked (optionally with "number"/"#"/a
+// trailing period), or a standalone new request that happens to contain a
+// digit somewhere would get misread as picking an option. Returns the
+// picked 1-based index, or null if the message isn't a clean bare number.
+export function bareDisambiguationChoice(text) {
+  const raw = (text || '').trim();
+  const match = raw.match(/^(?:#|number|no\.?|option)?\s*(\d{1,2})\.?$/i);
+  if (!match) return null;
+  const n = parseInt(match[1], 10);
+  return n >= 1 ? n : null;
+}

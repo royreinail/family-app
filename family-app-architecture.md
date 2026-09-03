@@ -956,6 +956,66 @@ bot-facing capability in this codebase works). **Real intent-classification qual
 (same boundary-layer convention as every other real LLM call) — needs a live retest with real, varied
 phrasing in both languages, same caveat as item 10.
 
+**A2 — Cancel / reschedule existing events (✅ built).** "Cancel dance class Thursday", "move it to
+17:00" — the bot's third intent (`llm.js`'s new `record_management` tool, alongside `record_extraction`/
+`record_query`; `tool_choice` stays `{type: 'any'}`, so still one LLM call per message across all three).
+D-2's decision, built exactly as specified: when a description matches more than one event, list them
+and ask which one — never refuse, never silently guess.
+
+- **Lookup:** `classify.js`'s new `matchEventsByDescription(events, {titleHint, dateHint})` — word
+  overlap between the description and the event's title (not exact/substring match, since a real
+  description rarely repeats the title verbatim, and either side can be in either language), narrowed to
+  an *exact* same-day match when a date hint is given — no partial credit for "close," since a wrong-day
+  cancel is exactly the mistake this whole flow exists to prevent. Search window: the hinted date if one
+  was given, else 60 days forward from today (canceling/rescheduling something in the past is unusual
+  enough not to warrant an unbounded query).
+- **Deliberately does *not* apply `shouldShowOnKidBoard`** the way A1's read-back query does — audience
+  only controls what the *kid dashboard* shows, not what a parent can manage through the bot. A
+  `parent_only` event must still be findable and cancellable here.
+- **Disambiguation is a real parked state**, not just a reply: a new `needs_disambiguation`
+  `extraction_log` state (schema.sql's CHECK constraint widened via the same idempotent
+  `ALTER ... DROP/ADD CONSTRAINT` pattern already established for `families.invite_code`, since
+  `CREATE TABLE IF NOT EXISTS` doesn't retroactively touch an existing table's constraint) stores the
+  matched candidates (capped at 5) plus the pending action. `commands.js`'s new
+  `bareDisambiguationChoice` resolves the sender's next bare reply ("2", "#2", "number 2") the same
+  strict way `isBareTimeAnswer` resolves a "What time?" answer — a genuinely new message that happens to
+  contain a digit elsewhere must still go through normal extraction, not get misread as picking an
+  option. A 30-minute window (`findRecentPendingDisambiguation`) bounds how long the prompt stays live,
+  same recency-window philosophy as every other parked-state lookup in this file.
+- **Cancel** deletes the real event and retires its original `extraction_log` row (state `'undone'`, the
+  same convention the `undo` command already uses — via the new `findByCalendarEventId` lookup) so a
+  stale `'written'` row doesn't keep pointing at a Calendar event that no longer exists (which a later
+  item-6 person-correction attempt could otherwise try, and fail, to patch).
+- **Reschedule** preserves the event's original duration (computed from its own real start/end, not
+  reset to a default) and asks "what time should I move it to?" instead of silently no-op-ing when the
+  message gives no target time/date at all — a real gap caught while building this: without the guard, a
+  bare "move dance class" would default the missing new time to the event's *own current* time, "moving"
+  it to exactly where it already was. **A genuine, caught-mid-build bug in the reschedule math itself:**
+  computing the new end time by round-tripping the naive wall-clock start/end strings through plain
+  `new Date()` + `.toISOString()` silently picked up the *server process's* own local timezone offset —
+  the exact bug class `addOneHour`/`localDateTimeToUtcIso` already exist elsewhere in this file to avoid,
+  and this hit it anyway. Fixed with two new, narrowly-scoped helpers, `naiveDateTimeToUtcMs`/
+  `utcMsToNaiveDateTime` (UTC as neutral scratch space only, same reasoning as `addOneHour`'s own
+  comment) — never parse a naive wall-clock string with a bare `new Date()` in this codebase; this pair
+  (or `addOneHour`, or `localDateTimeToUtcIso` for a real instant) is why.
+- **A pre-existing test fake shape gap surfaced along the way:** `tests/setup/fakes.js`'s `updateEvent`
+  only ever unwrapped the real Google patch shape's `extendedProperties.private` back into the fake's
+  flat internal storage, not `start.dateTime`/`end.dateTime` — meaning a *pre-existing* acceptance test
+  (fixture 6, item 9's time-correction case) was asserting against a stale, never-actually-unwrapped
+  nested key that happened to still exist from `...rest` spreading. Fixed the fake to unwrap both
+  consistently, updated that one pre-existing assertion to the same flat convention every other field in
+  the fake already uses (`written.startDateTime`, not `written.start.dateTime`).
+
+`tests/regression/eventManagement.test.js` (new): `matchEventsByDescription`'s word-overlap and
+date-narrowing behavior, `bareDisambiguationChoice`'s strictness, both reply formatters, a real
+single-match cancel (event actually deleted, original log retired), the full multi-match →
+list-and-ask → bare-number-resolves-it → correct-one-deleted flow, an out-of-range disambiguation reply
+changing nothing, a real reschedule preserving duration, the missing-target-time guard, the no-match
+case, a `parent_only` event still being manageable, the not-connected case, and the
+`naiveDateTimeToUtcMs`/`utcMsToNaiveDateTime` round-trip directly. Full suite: 126/126 passing. Frontend
+untouched — same WhatsApp-only surface as A1. **Real intent-classification quality is unverified**, same
+caveat as A1/item 10 — needs a live retest with real phrasing.
+
 ---
 
 ## "Family App" naming inventory (Aug 2026)

@@ -253,6 +253,59 @@ export function formatQueryReply(events, { personName, dateFrom, dateTo } = {}) 
   return `Here's what's on${scope}, ${range}:\n${events.map(formatEventLine).join('\n')}`;
 }
 
+// A2 (cancel/reschedule) — matches a free-text description ("dance class",
+// "the dentist thing") against real Calendar events by word overlap in the
+// title, not an exact/substring match: real descriptions rarely repeat the
+// title verbatim, and titles/descriptions can each be in either language.
+// Deliberately simple (split on whitespace/punctuation, any shared word of
+// real length counts) rather than fuzzy-scored — good enough for a small
+// personal calendar's realistic candidate set, and its behavior stays
+// obvious to reason about. `dateHint`, when given, requires an exact same-day
+// match — no partial-credit for "close" dates, since a wrong-day cancel is
+// exactly the kind of mistake this whole flow exists to prevent.
+function significantWords(text) {
+  return (text || '')
+    .toLowerCase()
+    .split(/[\s,.\-–—:;!?"'()[\]]+/)
+    .filter((w) => w.length > 1);
+}
+
+export function matchEventsByDescription(events, { titleHint, dateHint } = {}) {
+  const hintWords = significantWords(titleHint);
+  return events.filter((item) => {
+    if (dateHint) {
+      const itemDate = (item.start?.dateTime || item.start?.date || '').slice(0, 10);
+      if (itemDate !== dateHint) return false;
+    }
+    if (!hintWords.length) return true; // date-only request ("cancel Thursday's thing") with no title text to match
+    const titleWords = new Set(significantWords(item.summary));
+    return hintWords.some((w) => titleWords.has(w));
+  });
+}
+
+function formatCandidateLine(item, index) {
+  const date = (item.start?.dateTime || item.start?.date || '').slice(0, 10);
+  const time = item.start?.dateTime ? ` ${item.start.dateTime.slice(11, 16)}` : '';
+  return `${index + 1}. ${item.summary || 'Untitled'}, ${date}${time}`;
+}
+
+export function formatDisambiguationReply(candidates, managementAction) {
+  const verb = managementAction === 'cancel' ? 'cancel' : 'reschedule';
+  return `A few things match — which one do you want to ${verb}?\n${candidates.map(formatCandidateLine).join('\n')}\n(reply with the number)`;
+}
+
+export function formatNoMatchReply(titleHint) {
+  return `I couldn't find anything on the calendar matching "${titleHint}".`;
+}
+
+export function formatManagementConfirmReply(managementAction, item, { newDate, newTime } = {}) {
+  const title = item.summary || 'that';
+  if (managementAction === 'cancel') {
+    return `Cancelled — ${title} ✅`;
+  }
+  return `Moved — ${title} to ${newDate} ${newTime} ✅`;
+}
+
 // Extraction only ever gives a start time, but a zero-duration calendar
 // event is odd UX — default every write to a 1-hour block. Uses UTC as
 // neutral scratch space for the date-rollover arithmetic only; the
@@ -268,6 +321,30 @@ export function addOneHour(dateStr, timeStr) {
     date: `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`,
     time: `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`,
   };
+}
+
+// A2 (reschedule) — same "UTC as neutral scratch space" reasoning as
+// addOneHour just above, generalized to an arbitrary naive
+// "YYYY-MM-DDTHH:MM[:SS]" string and an arbitrary duration. Exists
+// specifically because `new Date(naiveString)` parses using the *server
+// process's* local timezone, not a neutral one — real bug caught writing
+// this: computing a rescheduled event's new end time by round-tripping
+// through plain `new Date()` + `.toISOString()` silently shifted every
+// result by the sandbox's local UTC offset, landing hours off. Never use
+// `new Date()` directly on a naive wall-clock string in this codebase —
+// this pair (or addOneHour, or localDateTimeToUtcIso for a real instant)
+// is why.
+export function naiveDateTimeToUtcMs(str) {
+  const [datePart, timePart = '00:00:00'] = str.split('T');
+  const [year, month, day] = datePart.split('-').map(Number);
+  const [hour, minute, second = 0] = timePart.split(':').map(Number);
+  return Date.UTC(year, month - 1, day, hour, minute, second);
+}
+
+export function utcMsToNaiveDateTime(ms) {
+  const d = new Date(ms);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
 }
 
 // "Today" in a given IANA timezone, as YYYY-MM-DD — deliberately NOT
