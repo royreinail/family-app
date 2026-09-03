@@ -183,8 +183,15 @@ export function webhookRouter() {
             createEvent: (evt) => calendarIntegration.createEvent(credentials, evt),
             updateEvent: (id, patch) => calendarIntegration.updateEvent(credentials, id, patch),
             deleteEvent: (id) => calendarIntegration.deleteEvent(credentials, id),
+            // A1 (read-back queries) — same real listEvents call
+            // dashboard.js already uses for the kid board.
+            listEvents: (range) => calendarIntegration.listEvents(credentials, range),
           },
           messenger: { send: (to, msg) => messengerIntegration.send(to, msg) },
+          // A1 — lets a read-back query give a clean "connect Calendar
+          // first" reply instead of a generic API-failure message when
+          // there's nothing to even attempt a read against.
+          calendarConnected: !!credentials,
           timeZone,
           familyMembers,
           senderFamilyMember,

@@ -27,6 +27,10 @@ import {
   calendarPayloadFromCandidate,
   localDateTimeToUtcIso,
   sanitizeActivityIcon,
+  shouldShowOnKidBoard,
+  matchMembersToEvent,
+  matchSingleFamilyMember,
+  formatQueryReply,
 } from './classify.js';
 import { scheduleReminder } from './reminders.js';
 
@@ -56,13 +60,14 @@ async function withRetry(fn, { attempts = 3, baseDelayMs = 200 } = {}) {
  * @param {object} deps - injected boundary implementations (production wiring in routes/webhook.js, fakes in tests)
  * @param {import('pg').Pool} deps.pool
  * @param {(rawInput: string) => Promise<object>} deps.llmExtract
- * @param {{createEvent: Function, updateEvent: Function, deleteEvent: Function}} deps.calendar - already family-scoped
+ * @param {{createEvent: Function, updateEvent: Function, deleteEvent: Function, listEvents: Function}} deps.calendar - already family-scoped
  * @param {{send: Function}} deps.messenger
  * @param {object} [deps.senderFamilyMember] - the family member mapped to this sender's number, if any (item 6's forwarded-default target)
+ * @param {boolean} [deps.calendarConnected] - A1: lets a read-back query give a clean "connect Calendar first" reply instead of a raw API failure
  */
 export async function handleIncomingMessage(message, deps) {
   const { familyId, externalMessageId, senderIdentifier, text, replyToExtractionLogId, wasForwarded } = message;
-  const { pool, llmExtract, calendar, messenger, timeZone = 'UTC', familyMembers = [], senderFamilyMember = null } = deps;
+  const { pool, llmExtract, calendar, messenger, timeZone = 'UTC', familyMembers = [], senderFamilyMember = null, calendarConnected = true } = deps;
 
   // 1. Write-ahead log — the instant the "webhook fires", before anything else.
   const log = await extractionLogRepo.create(
@@ -151,6 +156,16 @@ export async function handleIncomingMessage(message, deps) {
     await extractionLogRepo.updateState(log.id, { state: 'failed', error: String(err?.message || err) }, pool);
     return { outcome: 'failed', error: err, log };
   }
+
+  // A1 — a read-back question ("what's on tomorrow?") is a genuinely
+  // different shape from a capture and branches off before any of the
+  // capture-only steps below (relative-date override, audience override,
+  // forwarded-sender default, assessment rules, a write) — none of those
+  // make sense for "tell me what's already there."
+  if (candidate.type === 'query') {
+    return handleReadBackQuery({ log, candidate, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers, calendarConnected });
+  }
+
   // "today"/"tomorrow" are unambiguous enough to not trust to LLM date
   // arithmetic — see classify.js for why (a real off-by-one was observed).
   // Applies (and can fill in a date the LLM missed) whenever the raw text
@@ -250,6 +265,53 @@ export async function handleIncomingMessage(message, deps) {
   }
 
   return result;
+}
+
+// A1 — reads, never writes: resolves the asked-about date range against the
+// family's own timezone (same conversion `write_task_reminder` above uses,
+// so "tomorrow" means the same calendar day either direction), lists
+// matching events, and replies. Two filters, in order: D-1's decision
+// reuses the *exact* audience filter the kid dashboard applies
+// (shouldShowOnKidBoard) rather than inventing a second one; then, only
+// when the question named someone ("what does Gaia have Tuesday?"),
+// narrows to events actually matched to that person via the same
+// personId-first/text-match-fallback logic the dashboard's own card
+// coloring already relies on (matchMembersToEvent) — one shared notion of
+// "whose event is this" everywhere it's asked, not a third guess.
+async function handleReadBackQuery({ log, candidate, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers, calendarConnected }) {
+  if (!calendarConnected) {
+    await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+    await messenger.send(senderIdentifier, "Google Calendar isn't connected yet — connect it from Settings first.");
+    return { outcome: 'query_failed', log };
+  }
+
+  const timeMin = localDateTimeToUtcIso(candidate.date_from, '00:00', timeZone);
+  const timeMax = localDateTimeToUtcIso(candidate.date_to, '23:59', timeZone);
+
+  let items;
+  try {
+    items = await calendar.listEvents({ timeMin, timeMax });
+  } catch (err) {
+    await extractionLogRepo.updateState(log.id, { state: 'failed', error: String(err?.message || err) }, pool);
+    await messenger.send(senderIdentifier, "Couldn't check the calendar just now — try again in a bit.");
+    return { outcome: 'failed', error: err, log };
+  }
+
+  let visible = items.filter(shouldShowOnKidBoard);
+
+  const targetMember = candidate.person ? matchSingleFamilyMember(candidate.person, familyMembers) : null;
+  if (targetMember) {
+    visible = visible.filter((item) => matchMembersToEvent(item, familyMembers).some((m) => m.id === targetMember.id));
+  }
+
+  const reply = formatQueryReply(visible, {
+    personName: targetMember?.name,
+    dateFrom: candidate.date_from,
+    dateTo: candidate.date_to,
+  });
+  await messenger.send(senderIdentifier, reply);
+  await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+  return { outcome: 'query', events: visible, reply, log };
 }
 
 async function handleCommand({ command, log, familyId, senderIdentifier, calendar, messenger, pool }) {

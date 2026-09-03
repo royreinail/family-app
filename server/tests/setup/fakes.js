@@ -30,6 +30,31 @@ export function createFakeCalendar() {
     deleteEvent: async (id) => {
       events.delete(id);
     },
+    // A1 (read-back queries) — converts the fake's flat internal storage
+    // back into the real Google Calendar item shape the filtering logic
+    // (shouldShowOnKidBoard/matchMembersToEvent/formatQueryReply) actually
+    // expects, same shape dashboard.js's real listEvents already returns.
+    // Deliberately ignores timeMin/timeMax and returns everything stored —
+    // date-range filtering itself is the real Google API boundary call,
+    // not unit-tested here for the same reason no other real
+    // integrations/ call is; tests exercise the *filtering* logic
+    // (audience, person-scoping) against events they explicitly created,
+    // not against a reimplementation of Calendar's own range semantics.
+    listEvents: async () =>
+      [...events.entries()].map(([id, e]) => ({
+        id,
+        summary: e.title,
+        description: e.description,
+        start: { dateTime: e.startDateTime },
+        end: { dateTime: e.endDateTime },
+        extendedProperties: {
+          private: {
+            ...(e.audience ? { audience: e.audience } : {}),
+            ...(e.activityIcon ? { activityIcon: e.activityIcon } : {}),
+            ...(e.personId ? { personId: e.personId } : {}),
+          },
+        },
+      })),
   };
 }
 

@@ -236,6 +236,23 @@ export function reminderConfirmReply(candidate) {
   return `Got it — I'll remind you: ${title} at ${candidate.time} ✅`;
 }
 
+// A1 (read-back queries) — pulls just the HH:MM out of a real Calendar
+// event's ISO start time; an all-day event (date only, no dateTime) has no
+// specific time to show at all.
+function formatEventLine(item) {
+  const time = item.start?.dateTime ? ` ${item.start.dateTime.slice(11, 16)}` : '';
+  return `• ${item.summary || 'Untitled'}${time}`;
+}
+
+export function formatQueryReply(events, { personName, dateFrom, dateTo } = {}) {
+  const scope = personName ? ` for ${personName}` : '';
+  const range = dateFrom === dateTo ? dateFrom : `${dateFrom} to ${dateTo}`;
+  if (!events.length) {
+    return `Nothing on the calendar${scope}, ${range}.`;
+  }
+  return `Here's what's on${scope}, ${range}:\n${events.map(formatEventLine).join('\n')}`;
+}
+
 // Extraction only ever gives a start time, but a zero-duration calendar
 // event is odd UX — default every write to a 1-hour block. Uses UTC as
 // neutral scratch space for the date-rollover arithmetic only; the
@@ -333,4 +350,34 @@ export function overrideExplicitAudienceKeyword(rawInput, candidate) {
 // without the real Google Calendar API dashboard.js otherwise needs.
 export function shouldShowOnKidBoard(calendarEvent) {
   return calendarEvent?.extendedProperties?.private?.audience !== 'parent_only';
+}
+
+// Moved here from dashboard.js (A1, read-back queries) so pipeline.js can
+// reuse it for person-scoped queries ("what does Gaia have Tuesday?")
+// without routes/ depending on pipeline/ backwards — classify.js is the
+// shared pure-logic module both already sit on top of. Real bug this fixed
+// originally: this used to be the *only* signal for "who is this event
+// for" — scanning the event's title/description text for a family
+// member's literal name, independent of, and much less reliable than, the
+// actual match already made and colored at write time
+// (calendarPayloadFromCandidate above). Most real titles never contain the
+// person's name at all ("Dance class" for Mia), so that heuristic found
+// nothing and the card fell back to a neutral color even though the real
+// Calendar event was correctly colored the whole time. Now prefers the
+// member actually stored on the event (extendedProperties.private.personId,
+// the same match colorId came from — one resolution, not two that can
+// drift), unioned with any *additional* members the text happens to name
+// (preserves the 2-person stripe / 3+ avatar-stack display for a message
+// that genuinely mentions more than one person — the extraction pipeline
+// only ever resolves one `person` field, so text-matching is still the
+// only way to catch a second one). An event written before this existed
+// has no personId at all and falls back to the text-only heuristic
+// exactly as before.
+export function matchMembersToEvent(item, members) {
+  const personId = item.extendedProperties?.private?.personId;
+  const storedMember = personId ? members.find((m) => m.id === personId) : null;
+  const haystack = `${item.summary || ''} ${item.description || ''}`.toLowerCase();
+  const textMatches = members.filter((m) => haystack.includes(m.name.toLowerCase()));
+  if (!storedMember) return textMatches;
+  return [storedMember, ...textMatches.filter((m) => m.id !== storedMember.id)];
 }

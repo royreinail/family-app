@@ -904,6 +904,60 @@ Full suite: 108/108 passing. Frontend untouched.
 
 ---
 
+## Enhancement backlog (claude-code-enhancements.md) — build in progress
+
+Roy handed over a full capability-expansion backlog (`claude-code-enhancements.md`, kept in
+`~/Downloads/`, not in this repo) with an explicit build order and five decisions pre-answered
+("DECISIONS — ANSWERED" — build to those, don't re-ask). Building item by item, in that order, each
+with its own tests/deploy/verify pass, same discipline as every fix in this doc. This section tracks
+progress; the source doc has the full backlog and rationale for anything not summarized here.
+
+**A1 — Read-back queries (✅ built).** The bot could only ever write; this makes it two-way — "what's on
+tomorrow?", "מה יש לגאיה ביום שלישי?" get an actual answer instead of silently becoming (or failing to
+become) a new event.
+
+- **Intent classification, not a keyword, same lesson as item 10.** `llm.js` now defines a second tool,
+  `record_query`, alongside the existing `record_extraction` — `tool_choice` changed from forcing
+  `record_extraction` specifically to `{type: 'any'}`, which still guarantees exactly one tool call
+  every time (never a free-text non-tool reply), but lets the model choose *which* tool actually fits.
+  Still **one LLM call per message**, not two. `extract()`'s return value now carries a `type`
+  discriminator (`'capture'` or `'query'`) so callers can branch — fully backward compatible, since a
+  capture result still carries every original field at the top level unchanged, and the fake LLM test
+  helper's registered candidates (none of which set `type`) fall through to `'capture'` handling exactly
+  as before.
+- **Pipeline routing:** `pipeline.js`'s `handleIncomingMessage` branches to a new `handleReadBackQuery`
+  immediately after the LLM call, before any of the capture-only steps (relative-date override, audience
+  override, forwarded-sender default, assessment rules, a write) — none of those apply to "tell me what's
+  already there."
+- **D-1's two decided filters, reusing existing logic rather than inventing new:** the *exact* audience
+  filter the kid dashboard already uses (`shouldShowOnKidBoard`) applies to every query result; a
+  person-scoped question ("what does Gaia have Tuesday?") narrows further via `matchMembersToEvent` — the
+  same personId-first/text-match-fallback resolution the dashboard-card-color fix already relies on, so
+  "whose event is this" is answered exactly one way everywhere it's asked, not a third guess.
+- **A real architectural cleanup along the way:** `matchMembersToEvent` used to live in `routes/dashboard.js`
+  — reusing it from `pipeline.js` that way would have made pipeline/ depend on routes/, backwards from
+  every other dependency in this codebase. Moved it into `classify.js` (the shared pure-logic module both
+  already sit on top of); `dashboard.js` now imports it from there instead of defining it locally.
+- **`calendar.listEvents` added to the pipeline's injected `calendar` interface** (`webhook.js`), reusing
+  the exact same real Google Calendar read `dashboard.js` already calls — no new integration code.
+  `calendarConnected` also threads through from `webhook.js` (`!!credentials`) so a query before Google
+  Calendar is connected gets a clean "connect it from Settings first" reply instead of a raw thrown-error
+  message.
+- **Reply formatting:** new `formatQueryReply` (classify.js, alongside the other reply-wording functions)
+  — lists matching events with their time (skips the time entirely for a genuine all-day event), or says
+  plainly there's nothing, scoped by person/date range when given.
+
+`tests/regression/readBackQueries.test.js` (new): `formatQueryReply`'s own shape (empty/general/scoped/all-day),
+a query routing to a read and never creating anything, a query listing a real previously-written event, the
+audience filter excluding a `parent_only` event, person-scoping correctly isolating one family member's
+events from another's (via personId, not just text), and the not-connected case's clean reply. Full suite:
+114/114 passing. Frontend untouched (no UI surface for this — WhatsApp only, matching how every other
+bot-facing capability in this codebase works). **Real intent-classification quality itself is unverified**
+(same boundary-layer convention as every other real LLM call) — needs a live retest with real, varied
+phrasing in both languages, same caveat as item 10.
+
+---
+
 ## "Family App" naming inventory (Aug 2026)
 
 Every place the literal product name "Family App" appears, so a future rename has a checklist instead of

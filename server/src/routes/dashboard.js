@@ -9,39 +9,13 @@ import * as familyMembersRepo from '../repositories/familyMembers.js';
 import * as activityIconsRepo from '../repositories/activityIcons.js';
 import * as googleCredentialsRepo from '../repositories/googleCredentials.js';
 import * as calendar from '../integrations/calendar.js';
-import { shouldShowOnKidBoard, iconForCategory, sanitizeActivityIcon } from '../pipeline/classify.js';
+import { shouldShowOnKidBoard, iconForCategory, sanitizeActivityIcon, matchMembersToEvent } from '../pipeline/classify.js';
 import { requireFamily } from './middleware.js';
 
 function startOfTomorrow(timezone) {
   const now = new Date();
   const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
   return tomorrow;
-}
-
-// Real bug: this used to be the *only* signal for "who is this event for" —
-// scanning the event's title/description text for a family member's
-// literal name. That's independent of, and much less reliable than, the
-// actual match already made and colored at write time
-// (classify.js's calendarPayloadFromCandidate): most real titles never
-// contain the person's name at all ("Dance class" for Mia, "Dentist" for
-// Theo), so this found nothing and the card fell back to a neutral color
-// even though the real Calendar event was correctly colored the whole
-// time. Now prefers the member actually stored on the event
-// (extendedProperties.private.personId, the same match colorId came from —
-// one resolution, not two that can drift), unioned with any *additional*
-// members the text happens to name (preserves the 2-person stripe / 3+
-// avatar-stack display for a message that genuinely mentions more than one
-// person — the extraction pipeline only ever resolves one `person` field,
-// so text-matching is still the only way to catch a second one). An event
-// written before this existed has no personId at all and falls back to the
-// text-only heuristic exactly as before.
-export function matchMembersToEvent(item, members) {
-  const personId = item.extendedProperties?.private?.personId;
-  const storedMember = personId ? members.find((m) => m.id === personId) : null;
-  const haystack = `${item.summary || ''} ${item.description || ''}`.toLowerCase();
-  const textMatches = members.filter((m) => haystack.includes(m.name.toLowerCase()));
-  if (!storedMember) return textMatches;
-  return [storedMember, ...textMatches.filter((m) => m.id !== storedMember.id)];
 }
 
 // Roy's call (live-testing feedback): stop gatekeeping icons behind a small

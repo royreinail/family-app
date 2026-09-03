@@ -2,7 +2,8 @@
 // color doesn't match the assigned kid color." Root cause: the dashboard
 // re-derived "who is this event for" at *read* time by scanning the
 // event's title/description text for a family member's literal name
-// (dashboard.js's matchMembersToEvent) — completely independent of the
+// (classify.js's matchMembersToEvent, moved here from dashboard.js when A1
+// needed the same function from pipeline.js too) — completely independent of the
 // actual match already made and colored at *write* time
 // (classify.js's calendarPayloadFromCandidate / resolveEventColorId). Most
 // real titles never contain the person's name at all ("Dance class" for
@@ -22,8 +23,7 @@ import { seedFamily } from '../setup/seedFamily.js';
 import { createFakeCalendar, createFakeMessenger, createFakeLlm } from '../setup/fakes.js';
 import { handleIncomingMessage } from '../../src/pipeline/pipeline.js';
 import * as familyMembersRepo from '../../src/repositories/familyMembers.js';
-import { calendarPayloadFromCandidate } from '../../src/pipeline/classify.js';
-import { matchMembersToEvent } from '../../src/routes/dashboard.js';
+import { calendarPayloadFromCandidate, matchMembersToEvent } from '../../src/pipeline/classify.js';
 import { GOOGLE_EVENT_COLORS } from '../../src/integrations/googleColors.js';
 
 let pool;

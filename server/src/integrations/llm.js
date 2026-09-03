@@ -2,9 +2,39 @@
 // confidence score, no routing decision, no reply wording — everything
 // downstream is deterministic app code (see rules/ and pipeline/).
 
+// A1 (read-back queries) — the bot needs to tell "create this" apart from
+// "tell me what's already there" ("what's on tomorrow?", "מה יש לגאיה ביום
+// שלישי?"), and that's genuine intent classification, not a keyword to
+// match (same lesson as item 10's reminder-intent fix — see
+// EXTRACTION_TOOL's own description below for the capture side of the same
+// distinction). Modeled as two tools rather than one schema with an
+// "intent" field so each shape only ever carries fields that make sense
+// for it — a query has no title/color/icon to fill in, a capture has no
+// date range to search. `tool_choice: 'any'` (see extract()) lets the
+// model pick which one applies in the *same* call — still one LLM call
+// per message, not two.
+const QUERY_TOOL = {
+  name: 'record_query',
+  description:
+    'Record a read-back question asking what is already on the calendar/tasks — the sender wants information, not to create or change anything.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      date_from: { type: 'string', description: 'ISO 8601 date — first day of the range being asked about, resolved against the reference date (e.g. "tomorrow" -> that date).' },
+      date_to: { type: 'string', description: 'ISO 8601 date — last day of the range. Same as date_from for a single day ("what\'s on tomorrow"); a real range for "this week"/"עד יום שישי" etc.' },
+      person: {
+        type: ['string', 'null'],
+        description: 'Set only when the question is explicitly scoped to one person ("what does Gaia have Tuesday?", "מה יש לגאיה ביום שלישי?") — their name, matched the same way record_extraction\'s `person` is. null for a general, family-wide question ("what\'s on tomorrow?").',
+      },
+    },
+    required: ['date_from', 'date_to', 'person'],
+  },
+};
+
 const EXTRACTION_TOOL = {
   name: 'record_extraction',
-  description: 'Record the structured fields extracted from a forwarded family message.',
+  description:
+    'Record the structured fields extracted from a forwarded family message that describes something to create — a real event, task, or reminder. Not for a question asking what already exists (use record_query for that).',
   input_schema: {
     type: 'object',
     properties: {
@@ -54,8 +84,13 @@ const EXTRACTION_TOOL = {
 const SYSTEM_PROMPT = `You extract plain factual fields from a short family message — forwarded
 WhatsApp text, a photographed flyer/schedule (read the image directly; it may be in any language,
 including Hebrew — extract fields in whatever language the source uses, don't translate), or a
-forwarded email. Do not decide what should happen with the message — only report what is literally
-present. If a field isn't stated, use null. Set reminder_requested by judging the sender's actual
+forwarded email. First decide which of the two tools actually fits: record_query when the sender
+is asking what's already on the calendar ("what's on tomorrow?", "מה יש לגאיה ביום שלישי?", "any
+plans Friday?") — a real question, not a statement — versus record_extraction for a message
+describing something to create. Judge this the same way as reminder_requested below: by intent, in
+any phrasing or language, not a fixed trigger word. Do not decide what should happen with the
+message beyond that one choice — only report what is literally present. If a field isn't stated,
+use null. Set reminder_requested by judging the sender's actual
 intent — do they want a personal nudge/reminder at a future moment? — not by matching a fixed
 phrase; this can be asked for in many ways and in any language (see reminder_requested's own
 description for real examples). Resolve relative dates ("Thursday",
@@ -86,7 +121,11 @@ their name in it (e.g. prefer "Shopping" over "Shopping with Shai" when person i
 /**
  * @param {string} rawInput - message text, or a caption/empty string when `opts.image` is set
  * @param {{referenceDate?: string, model?: string, image?: {base64: string, mimeType: string}, familyMemberNames?: string[]}} [opts]
- * @returns {Promise<{title:string|null,date:string|null,time:string|null,end_time:string|null,person:string|null,category:string|null,reminder_requested:boolean,reminder_datetime:string|null,audience:'family'|'parent_only',activity_icon:string}>}
+ * @returns {Promise<{type:'capture',title:string|null,date:string|null,time:string|null,end_time:string|null,person:string|null,category:string|null,reminder_requested:boolean,reminder_datetime:string|null,audience:'family'|'parent_only',activity_icon:string} | {type:'query',date_from:string,date_to:string,person:string|null}>}
+ *   `type` distinguishes a capture (create something) from a read-back
+ *   query (A1) — callers that only ever handled captures before this can
+ *   keep treating a missing/`'capture'` type exactly as before; every
+ *   original capture field is still present at the top level, unchanged.
  */
 export async function extract(rawInput, opts = {}) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -116,8 +155,12 @@ export async function extract(rawInput, opts = {}) {
       max_tokens: 512,
       system: buildSystemPrompt(opts.familyMemberNames),
       messages: [{ role: 'user', content }],
-      tools: [EXTRACTION_TOOL],
-      tool_choice: { type: 'tool', name: 'record_extraction' },
+      tools: [EXTRACTION_TOOL, QUERY_TOOL],
+      // 'any' (not 'tool'/name-forced, not 'auto') — forces exactly one
+      // tool call every time (never a free-text non-tool reply, same
+      // guarantee the old forced single-tool call had), but lets the model
+      // choose *which* of the two tools actually fits this message.
+      tool_choice: { type: 'any' },
     }),
   });
   if (!res.ok) {
@@ -127,5 +170,5 @@ export async function extract(rawInput, opts = {}) {
   const data = await res.json();
   const toolUse = data.content?.find((c) => c.type === 'tool_use');
   if (!toolUse) throw new Error('LLM response did not include the expected tool call.');
-  return toolUse.input;
+  return { ...toolUse.input, type: toolUse.name === 'record_query' ? 'query' : 'capture' };
 }
