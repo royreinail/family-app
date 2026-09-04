@@ -134,6 +134,25 @@ function isReminderOnlyMessage(candidate) {
   return candidate.reminder_datetime.slice(0, 16) === `${candidate.date}T${candidate.time}`;
 }
 
+// B2 (recurring events) — Google Calendar's own RRULE, generated from the
+// LLM's simple {weekly|biweekly|monthly|null} classification rather than
+// asking the model to produce RFC 5545 syntax itself (a much easier thing
+// to get subtly wrong than picking one of three words). No UNTIL/COUNT —
+// runs indefinitely, same as any manually-created recurring Calendar event
+// until someone cancels it (A2's cancel, which naturally still works on one
+// occurrence at a time: Google's own listEvents(singleEvents: true) already
+// expands a recurring event into individual instances with their own
+// deletable ids, so nothing extra was needed there for this to compose).
+const RRULE_BY_RECURRENCE = {
+  weekly: 'RRULE:FREQ=WEEKLY',
+  biweekly: 'RRULE:FREQ=WEEKLY;INTERVAL=2',
+  monthly: 'RRULE:FREQ=MONTHLY',
+};
+export function buildRecurrenceRule(recurrence) {
+  const rule = RRULE_BY_RECURRENCE[recurrence];
+  return rule ? [rule] : undefined;
+}
+
 // The Calendar `createEvent` payload for a candidate whose date AND time
 // are both known. Shared by the normal write_calendar branch and the
 // follow-up-answer branch (a `needs_time` event promoted once its time
@@ -172,7 +191,30 @@ export function calendarPayloadFromCandidate(candidate, { familyMembers = [], ti
     audience: candidate.audience || 'family',
     activityIcon: candidate.activity_icon ? sanitizeActivityIcon(candidate.activity_icon) : undefined,
     personId: matchedMember?.id,
+    // B1/B2 — plain pass-through; calendar.js's createEvent is the only
+    // place either one is actually interpreted (native `location` field,
+    // RRULE array respectively).
+    location: candidate.location || undefined,
+    recurrence: buildRecurrenceRule(candidate.recurrence),
   };
+}
+
+// A3 (multi-event extraction) — one line per additional event found beyond
+// the primary one, sent as its own follow-up message right after the
+// primary confirmation (see pipeline.js) rather than folded into
+// confirmReply itself — keeps every existing single-event confirmReply call
+// site and test untouched. `needs_time` items were written as a tentative
+// task (same routing a date-only *primary* message already gets), not
+// dropped — said explicitly here so it's visible which ones still need a
+// time, the same "never silently lose it" reasoning A3 exists for at all.
+export function formatAdditionalEventsNote(items) {
+  if (!items?.length) return '';
+  const lines = items.map(({ status, candidate }) => {
+    const when = formatDateTime(candidate.date, candidate.time);
+    const suffix = status === 'needs_time' ? ' — needs a time (added as a task)' : ' — added ✅';
+    return `• ${candidate.title || 'Event'}${when ? `, ${when}` : ''}${personNote(candidate)}${suffix}`;
+  });
+  return `Also found ${items.length} more in that message:\n${lines.join('\n')}`;
 }
 
 export function formatDateTime(date, time) {
@@ -212,6 +254,24 @@ function reminderNote(candidate) {
   return ` (I'll also remind you at ${candidate.reminder_datetime.slice(11, 16)})`;
 }
 
+// B1 — states the captured location back, same "confirm what was actually
+// understood" reasoning as personNote/reminderNote: a wrong or missing
+// location should be visible in the confirmation itself, not discovered
+// only by opening the real Calendar event later.
+function locationNote(candidate) {
+  return candidate.location ? ` at ${candidate.location}` : '';
+}
+
+// B2 — states that this is a *repeating* commitment, not a one-off, so a
+// recurrence being correctly captured (or wrongly assumed) is visible at a
+// glance the same way a range being captured is (see confirmReply's own
+// `range` line above).
+const RECURRENCE_LABEL = { weekly: 'weekly', biweekly: 'every two weeks', monthly: 'monthly' };
+function recurrenceNote(candidate) {
+  const label = RECURRENCE_LABEL[candidate.recurrence];
+  return label ? ` (repeats ${label})` : '';
+}
+
 export function confirmReply(candidate) {
   const when = formatDateTime(candidate.date, candidate.time);
   const title = candidate.title || 'Event';
@@ -219,7 +279,7 @@ export function confirmReply(candidate) {
   // correctly captured (or not) is visible in the confirmation itself,
   // not just in the Calendar event a person has to go check separately.
   const range = candidate.end_time ? `${when}–${candidate.end_time}` : when;
-  return `${title}, ${range}${personNote(candidate)}${reminderNote(candidate)} — added ✅`;
+  return `${title}, ${range}${locationNote(candidate)}${personNote(candidate)}${recurrenceNote(candidate)}${reminderNote(candidate)} — added ✅`;
 }
 
 export function qualifyReply(candidate) {

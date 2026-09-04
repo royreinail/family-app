@@ -37,7 +37,7 @@ function clientFor(credentials) {
 /**
  * @returns {Promise<{provider: 'google', external_id: string}>}
  */
-export async function createEvent(credentials, { title, startDateTime, endDateTime, timeZone, colorId, attendeeNames, audience, activityIcon, personId } = {}) {
+export async function createEvent(credentials, { title, startDateTime, endDateTime, timeZone, colorId, attendeeNames, audience, activityIcon, personId, location, recurrence } = {}) {
   const calendar = clientFor(credentials);
   // Kept out of the visible summary/description on purpose —
   // extendedProperties.private is invisible in Calendar's own UI, so this
@@ -65,6 +65,16 @@ export async function createEvent(credentials, { title, startDateTime, endDateTi
       start: { dateTime: startDateTime, timeZone },
       end: { dateTime: endDateTime, timeZone },
       colorId,
+      // B1 — the event's own native location field (Google's UI, and any
+      // "directions" affordance, reads this directly), not folded into the
+      // title text the way an address used to get stuffed in before this
+      // field existed.
+      location: location || undefined,
+      // B2 — an array of RRULE strings (classify.js's buildRecurrenceRule);
+      // Google Calendar owns all the actual repeat-occurrence behavior once
+      // this is set on the event resource, same field name on the wire as
+      // in our own payload — no repeat logic to build here.
+      recurrence: recurrence?.length ? recurrence : undefined,
       extendedProperties: Object.keys(privateProps).length ? { private: privateProps } : undefined,
     },
   });

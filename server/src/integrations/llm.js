@@ -57,10 +57,38 @@ const MANAGEMENT_TOOL = {
   },
 };
 
+// A3 (multi-event extraction) — a forwarded school schedule or flyer often
+// lists several dates at once ("swimming Mon & Wed, trip Friday"). The
+// original schema only ever had room for one event, so extraction silently
+// dropped everything after the first — same failure class as the
+// already-fixed duration-loss bug, just at the message level instead of
+// the event level. `additional_events` carries everything beyond the
+// single primary item (still captured in the top-level fields exactly as
+// before — fully backward compatible with every caller that only ever knew
+// about a single flat capture). A reduced shape on purpose: no reminder
+// fields (a personal reminder request applies to the sender's own primary
+// ask, not usually to every date in a forwarded list) and no `category`
+// (additional items are routed by a simple has-a-time check, not the
+// family's own assessment rules — see pipeline.js's writeAdditionalEvent).
+const ADDITIONAL_EVENT_ITEM = {
+  type: 'object',
+  properties: {
+    title: { type: ['string', 'null'] },
+    date: { type: ['string', 'null'], description: 'ISO 8601 date, e.g. 2026-08-20' },
+    time: { type: ['string', 'null'], description: '24h HH:MM start time — null if this specific item gives no time (still recorded, just as a date-only task, not silently dropped).' },
+    end_time: { type: ['string', 'null'], description: 'Same convention as the primary event\'s end_time — set only for an explicit end time or range.' },
+    person: { type: ['string', 'null'] },
+    location: { type: ['string', 'null'], description: "Same convention as the primary event's location field." },
+    audience: { type: 'string', enum: ['family', 'parent_only'], description: "Same judgment as the primary event's audience field." },
+    activity_icon: { type: 'string', description: 'Same one-emoji convention as the primary event\'s activity_icon field.' },
+  },
+  required: ['title', 'date', 'time', 'end_time', 'person', 'location', 'audience', 'activity_icon'],
+};
+
 const EXTRACTION_TOOL = {
   name: 'record_extraction',
   description:
-    'Record the structured fields extracted from a forwarded family message that describes something to create — a real event, task, or reminder. Not for a question asking what already exists (use record_query), and not for cancelling/changing something that already exists (use record_management).',
+    'Record the structured fields extracted from a forwarded family message that describes something to create — a real event, task, or reminder. Not for a question asking what already exists (use record_query), and not for cancelling/changing something that already exists (use record_management). When the message describes MORE than one distinct event or date (a weekly schedule, several dates in one flyer), record the first/main one in the top-level fields as usual and put every other one in additional_events — never drop a second, third, etc. one silently.',
   input_schema: {
     type: 'object',
     properties: {
@@ -73,6 +101,27 @@ const EXTRACTION_TOOL = {
       },
       person: { type: ['string', 'null'] },
       category: { type: ['string', 'null'] },
+      // B1 (location capture) — kept as a distinct field rather than left in
+      // `title`, so it can be written straight to the Calendar event's own
+      // native location field instead of getting stuffed into (and
+      // cluttering) the title text, which is what happened before this
+      // field existed.
+      location: { type: ['string', 'null'], description: 'A physical place/address mentioned for this event, if any — e.g. "Rothschild clinic", "34 Herzl St". null when the message names no specific place.' },
+      // B2 (recurring events) — most family scheduling is weekly (dance
+      // every Tuesday, therapy every Monday); without this, the exact same
+      // message has to be re-sent by hand every week. Same
+      // intent-classification reasoning as reminder_requested: judge
+      // whether the message describes a REPEATING commitment ("every
+      // Tuesday", "weekly", Hebrew "כל שלישי") vs. a one-time occurrence
+      // ("this Tuesday", "next Tuesday", a bare date) by meaning, not a
+      // fixed trigger word. Google Calendar handles the actual repeating
+      // behavior natively via RRULE once this is set — no repeat logic to
+      // build downstream.
+      recurrence: {
+        type: ['string', 'null'],
+        enum: ['weekly', 'biweekly', 'monthly', null],
+        description: 'Set only when the message describes a genuinely repeating event, not a single occurrence. null (by far the most common case) for anything one-time, including a single date that merely happens to fall on a day of the week.',
+      },
       reminder_requested: {
         type: 'boolean',
         // Real bug (item 10): this used to have no description of its own
@@ -102,8 +151,13 @@ const EXTRACTION_TOOL = {
         // emoji instead of a category word, not a second LLM call.
         description: "Exactly one emoji that best represents this specific activity, regardless of what language the message is in (a dance class -> 💃, a movie night -> 🎬, a dentist visit -> 🦷, a birthday -> 🎉) — pick whatever genuinely fits best, not from a fixed list. Use 📌 only when the message is too vague for any real icon to make sense.",
       },
+      additional_events: {
+        type: 'array',
+        description: 'Every OTHER distinct event/date this message describes, beyond the single primary one captured in the fields above. Empty array [] when the message only describes one thing (the overwhelmingly common case) — only non-empty for something like a forwarded weekly schedule or a flyer listing several dates.',
+        items: ADDITIONAL_EVENT_ITEM,
+      },
     },
-    required: ['title', 'date', 'time', 'end_time', 'person', 'category', 'reminder_requested', 'reminder_datetime', 'audience', 'activity_icon'],
+    required: ['title', 'date', 'time', 'end_time', 'person', 'category', 'location', 'recurrence', 'reminder_requested', 'reminder_datetime', 'audience', 'activity_icon', 'additional_events'],
   },
 };
 
@@ -129,7 +183,13 @@ household generally — the kid dashboard hides 'parent_only' events entirely, s
 the safe default, not 'parent_only'. Also set activity_icon to exactly one emoji that best
 represents the activity itself — pick freely, whatever genuinely fits (not from any fixed list),
 independent of what language the message is written in; use 📌 only when the message is too vague
-for any real icon to make sense.`;
+for any real icon to make sense. If the message plainly describes more than one distinct event or
+date (a weekly schedule, several dates in one flyer), put the first one in the fields above and
+every other one in additional_events (see its own description) — never silently drop one just
+because the schema only has one set of top-level fields. Set location whenever a specific place is
+named (an address, a clinic/venue name) — don't leave it folded into the title. Set recurrence only
+for a genuinely repeating commitment ("every Tuesday", "weekly"), judged the same intent-based way
+as reminder_requested — null for a one-time event, which is the default assumption whenever unclear.`;
 
 // Exported (unlike the actual API call, which is never unit-tested — same
 // reasoning as dashboard.js's real Calendar API calls) since this part is

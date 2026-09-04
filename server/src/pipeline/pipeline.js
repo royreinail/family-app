@@ -38,6 +38,7 @@ import {
   formatDisambiguationReply,
   formatNoMatchReply,
   formatManagementConfirmReply,
+  formatAdditionalEventsNote,
 } from './classify.js';
 import { scheduleReminder } from './reminders.js';
 
@@ -283,6 +284,34 @@ export async function handleIncomingMessage(message, deps) {
     result = { outcome: 'stopped', rule: classification.rule, log };
   }
 
+  // A3 — multi-event extraction: a forwarded message can describe more than
+  // one event/date at once (a school's weekly schedule, several trip dates
+  // in one flyer) — record_extraction's `additional_events` array carries
+  // anything beyond the primary item so it's never silently dropped, the
+  // same failure class as the already-fixed duration-loss bug. Processed
+  // independent of how the *primary* item itself routed (write/qualify/
+  // clarify/stop) — a message can have one awkward primary item next to two
+  // perfectly well-formed additional ones, and those shouldn't be swallowed
+  // just because the first one wasn't clean. Sent as its own follow-up
+  // message rather than folded into the primary reply — keeps every
+  // existing single-event confirmReply call site and test untouched, and
+  // reads just as clearly in a WhatsApp thread (two messages from the same
+  // turn) as one long combined one would.
+  if (candidate.additional_events?.length) {
+    const items = [];
+    for (const extra of candidate.additional_events) {
+      const written = await writeAdditionalEvent(extra, {
+        familyId, familyMembers, timeZone, text, wasForwarded, senderFamilyMember, pool, log, calendar,
+      });
+      if (written) items.push(written);
+    }
+    if (items.length) {
+      const note = formatAdditionalEventsNote(items);
+      await messenger.send(senderIdentifier, note);
+      result.additionalEvents = items;
+    }
+  }
+
   // Reminder-on-request — orthogonal to the write destination above, EXCEPT
   // for write_task_reminder, which already carries the reminder directly on
   // the task it just created (a second scheduleReminder call here would
@@ -295,6 +324,35 @@ export async function handleIncomingMessage(message, deps) {
   }
 
   return result;
+}
+
+// A3 — writes a single item from `additional_events`. Deliberately simpler
+// than the primary item's own path: routed by a plain has-a-time check, not
+// the family's assessment rules table (real-world additional items almost
+// always carry both a date and a time — that's the whole failure mode A3
+// exists to stop losing — so a second full rules-engine pass per item isn't
+// worth the complexity), and no reminder handling (a personal "remind me"
+// request is the sender's own ask, not something that applies per date in a
+// forwarded list). Still gets the same forwarded-sender person default and
+// explicit-audience-keyword override as the primary item, since both are
+// about the *whole* message's context (who forwarded it, "just us parents"),
+// not anything specific to being first vs. additional. Returns null (skip,
+// same as the primary item's own nothing-usable case) when there's no date
+// at all to act on.
+async function writeAdditionalEvent(extra, { familyId, familyMembers, timeZone, text, wasForwarded, senderFamilyMember, pool, log, calendar }) {
+  if (!extra?.date) return null;
+  let candidate = { ...extra, reminder_requested: false, reminder_datetime: null };
+  candidate = overrideExplicitAudienceKeyword(text, candidate);
+  candidate = applyForwardedSenderDefault(candidate, { wasForwarded, senderFamilyMember, familyMembers });
+  if (candidate.time) {
+    const ref = await calendar.createEvent(calendarPayloadFromCandidate(candidate, { familyMembers, timeZone }));
+    return { status: 'written', candidate, ref };
+  }
+  const task = await tasksRepo.create(
+    { familyId, title: candidate.title || 'Untitled task', dueDate: candidate.date, sourceExtractionLogId: log.id },
+    pool
+  );
+  return { status: 'needs_time', candidate, task };
 }
 
 // A1 — reads, never writes: resolves the asked-about date range against the
