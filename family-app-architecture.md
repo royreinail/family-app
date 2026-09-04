@@ -1016,6 +1016,144 @@ case, a `parent_only` event still being manageable, the not-connected case, and 
 untouched — same WhatsApp-only surface as A1. **Real intent-classification quality is unverified**, same
 caveat as A1/item 10 — needs a live retest with real phrasing.
 
+**A3 — Multi-event extraction from one message (✅ built).** A forwarded school schedule/flyer often
+lists several dates at once; the extraction schema only ever had room for one event, so extraction
+silently dropped everything past the first — same failure class as the already-fixed duration-loss
+bug, just at the message level instead of the event level. `record_extraction` gains
+`additional_events`: a reduced per-item shape (no reminder fields, no `category`) carrying anything
+beyond the primary item, fully backward compatible with every caller that only ever knew about a
+single flat capture. Processed independent of how the *primary* item itself routed
+(write/qualify/clarify/stop) — one awkward primary item next to two well-formed additional ones
+shouldn't lose the good ones. Each additional item is routed by a plain has-a-time check
+(write_calendar vs. a tentative task), not a second pass through the family's own assessment rules
+table (real additional items overwhelmingly carry both a date and a time — that's the whole failure
+mode this exists to stop losing), and gets the same forwarded-sender person default / explicit
+"just us parents" override as the primary item, since both are about the whole message's context, not
+anything specific to being first vs. additional. Sent as its own short follow-up message right after
+the primary confirmation, deliberately NOT folded into `confirmReply` itself — keeps every existing
+single-event confirmReply call site and test byte-for-byte untouched. `writeAdditionalEvent` in
+pipeline.js, `formatAdditionalEventsNote` in classify.js.
+`tests/regression/multiEventExtraction.test.js` (5 tests): writing/skipping/routing an additional
+item, the overrides applying per-item, and the overwhelmingly-common empty-array case staying
+single-message.
+
+**B1 — Location capture (✅ built) + B2 — Recurring events (✅ built).** Grouped together per the
+backlog (cheap schema additions, high daily value). B1 adds a `location` field, written straight to
+the Calendar event's own native location field (`calendar.js`'s `createEvent`) instead of getting
+stuffed into the title text, which is what happened before this existed — stated back in the
+confirmation too (`locationNote`), same "confirm what was actually understood" pattern as the
+existing person/reminder notes. B2 adds a `recurrence` field (`weekly`/`biweekly`/`monthly`/`null`,
+judged by intent the same way `reminder_requested` already is — "every Tuesday" vs. "this Tuesday"),
+turned into a real RRULE array (`classify.js`'s `buildRecurrenceRule`) on the Calendar event; Google
+owns all the actual repeat-occurrence behavior once that's set, no repeat logic to build. A2's
+cancel/reschedule composes with this for free: Google's own `listEvents(singleEvents: true)` already
+expands a recurring event into individually-addressable instances, so canceling "one Tuesday" of a
+weekly event needed no extra code at all. `tests/regression/locationAndRecurrence.test.js` (7 tests).
+
+**C1 — Standing rules taught in conversation (✅ built).** A fourth bot intent (`record_rule`,
+alongside create/query/manage): "art therapy is always at the Rothschild clinic", "never remind me
+before 07:00", "send the daily briefing at 21:00" get remembered and applied going forward instead of
+being treated as one-off events. Per D-3's specific efficiency requirement: the LLM detects
+rule-defining intent AND articulates a human-readable `rule_text` in the SAME call (never a second
+call to explain back what was just understood); the rule is held as a `'pending'` row in a new
+`standing_rules` table, not committed, while the bot asks a plain yes/no; the yes/no reply is matched
+directly against that pending row (`commands.js`'s `isYesNoAnswer`, a closed word list) —
+`resolveStandingRule` in pipeline.js never re-parses it through the model. Three `rule_kind`s,
+deliberately narrower than a free-form conditions/actions blob: `event_default` fills one field
+(location/audience/duration_minutes/person) whenever a future message's title/text contains a keyword
+(`applyStandingRuleDefaults` — fills gaps only, never overrides something the message itself stated);
+`timing_param` changes a named bot setting (currently just the daily briefing's send time, wired up
+for D1); `prep_association` (added under D2 below) teaches a packing/prep reminder for a kind of
+event. More elaborate rules (day-conditional ownership like "Shani handles Tuesdays, I handle
+Thursdays") are still recorded and shown back via `rule_text` for a human to read, but their
+*application* is a known, stated scope limit, not a silent gap. Reviewable only via a bot command per
+D-3 (no Settings screen): "rules"/"my rules" lists active rules, "delete rule N" removes one by that
+numbering. `tests/regression/standingRules.test.js` (9 tests) covers the full propose → pending →
+confirm/discard → applied-or-not lifecycle end to end, asserting the "never a second LLM call"
+guarantee directly via the fake LLM's call count.
+
+**D1 — Proactive daily briefing (✅ built).** The bot's first proactive (non-webhook-triggered)
+behavior: an unprompted evening message, "here's tomorrow," per D-4's exact scope — each parent gets
+their own items plus anything involving the kids, default send time 20:00, changeable via a standing
+rule (C1) rather than hardcoded. Depends on A1 (same calendar-read + audience-filter reasoning,
+different trigger). New `pipeline/briefing.js`'s `sweepDailyBriefings`, run on the same 60s
+interval-sweep infrastructure `server.js` already established for the reminder sweep — realistic scale
+is one household, so a real queue/cron system solves a problem this app doesn't have.
+`shouldSendBriefingNow` (pure — never sent yet today AND the local clock has reached the configured
+send time; fires on the first sweep tick at or after it, not only an exact-minute match, since a 60s
+poll can't guarantee landing exactly on target) and `isRelevantToParent` (D-4's filter: a parent's own
+events, any event involving a kid, and any unassigned event are relevant; only the OTHER parent's own
+personal item is excluded — same "when in doubt, show it" default `shouldShowOnKidBoard` already uses
+elsewhere) are both pure and directly tested. A new `families.last_briefing_sent_date` column (plain
+local date, not a timestamp, compared against the family's own local "today" — idempotent ALTER, same
+pattern as `invite_code`) is what actually prevents re-sending for the rest of a day.
+`tests/regression/dailyBriefing.test.js` (5 tests), including a real two-parent sweep asserting each
+parent's own filtered content and no-resend-same-day, forced to a `00:00` send-time threshold so it's
+deterministic regardless of when the suite actually runs.
+
+**B3 — Conflict detection (✅ built).** On create, checks whether the SAME person (via the personId
+already resolved onto the new event's own payload — checking every family member would be mostly
+noise, not real double-bookings) already has something overlapping that time; appends a note to the
+confirmation reply, never blocks the write, per the backlog's own "does not block creation — just
+flags." `classify.js`'s `findConflicts` (real interval overlap arithmetic, not just "same day") +
+`formatConflictNote`. Best-effort in pipeline.js: a `listEvents` failure during the check is caught
+and logged, never lets a conflict-check problem block the actual write.
+`tests/regression/conflictAndProvenance.test.js` covers the overlap/no-overlap/different-person cases
+and a real double-booking still writing successfully while flagging it in the reply.
+
+**B4 — Provenance in event description (✅ built).** Writes the original WhatsApp message text into
+the Calendar event's own description field (`calendarPayloadFromCandidate`'s new `sourceText` option)
+— visible weeks later without digging through WhatsApp, and a debugging aid (tells "bot misread a
+clear message" apart from "message was genuinely ambiguous"). Repurposes `calendar.js`'s `description`
+field cleanly: its only prior writer, `attendeeNames`, was defined but never actually populated by any
+caller, so this doesn't compete with or lose any real prior data. Threaded through all three
+`calendarPayloadFromCandidate` call sites: the primary write (the raw incoming text), the
+follow-up-promoted write (the *original* parked message, not the short "8:30" answer that merely
+completed it — `pending.raw_input`), and A3's additional-event writes (the same forwarded message all
+of them came from).
+
+**D2 — Preparation awareness (✅ built).** "Events imply tasks: swimming means pack a towel." Depends
+on D1 (delivery — this is a new section appended to the daily briefing, not a separate message or a
+new write path) and C1 (a taught association reuses the standing_rules mechanism, a new `rule_kind`:
+`prep_association`, `match_keyword` = the event-type word, `value` = the prep text). Per D-5, inference
+from event type is also approved and never silently written as a task — always a clearly-labeled
+suggestion section ("🎒 Possible prep (a suggestion, not added automatically)"). `classify.js`'s
+`inferPrepSuggestions`: a Roy-taught association is checked FIRST and wins outright over the built-in
+guess for the same title (an explicitly taught fact is more trustworthy than an inferred one); the
+small built-in `BUILT_IN_PREP_ASSOCIATIONS` table (English + Hebrew, same "keyword substring against
+the title" convention as `activityIcons.js`'s own `resolveIcon`) only fills in when nothing was taught.
+Required its own idempotent `ALTER` on `standing_rules_kind_check` (a real migration, not just an edit
+to the `CREATE TABLE` text — that table was already deployed live under C1 by the time this was built,
+so `CREATE TABLE IF NOT EXISTS` alone would have been a silent no-op on the real database, and the very
+first `prep_association` row written in production would have hit a constraint violation; caught
+before shipping, not after). `tests/regression/prepAwareness.test.js` (4 tests).
+
+**E1 — Voice notes as input (⚠️ built, needs a real credential Roy must add).** Self-contained per the
+backlog: transcribe once, then hand the resulting text to the extraction pipeline completely
+unchanged — a voice note becomes exactly the same code path a typed message already is, the same way
+an image's caption already works. `webhook.js`'s new `resolveAudioMediaRef` recognizes WhatsApp's
+`'audio'` message type (covers both a recorded voice note and a regular shared audio file — Meta's own
+`voice` flag doesn't need different handling here); the audio bytes download through the *existing*
+`messengerIntegration.downloadMedia` (already fully generic, not image-specific) and are handed to a
+new `integrations/transcription.js`. **Real, live gap, not a silent one:** Anthropic's own Messages API
+has no audio-input content type (only text/image/PDF as of this writing), so this can't reuse
+`ANTHROPIC_API_KEY` the way image capture reuses it for vision — `transcription.js` calls OpenAI's
+Whisper endpoint instead, the standard choice for this, gated behind its own `OPENAI_API_KEY`, which is
+**not currently set on this deployment**. Until it is, `transcribe()` throws a clear, typed error
+instead of attempting a doomed call, and `webhook.js` catches that and sends an honest "I can't
+understand voice notes yet — mind typing that instead?" reply — never silence, same philosophy as
+every other "nothing usable" case already handled there. The moment Roy adds a real `OPENAI_API_KEY`
+Railway variable, voice notes start working with no further code change needed. Adding that credential
+is outside what this pass could do on its own (the explicit prohibited-action rule against creating
+accounts/entering credentials — see this session's own earlier WhatsApp-template-submission precedent).
+`tests/regression/voiceMessageType.test.js` (3 tests) covers `resolveAudioMediaRef` directly, the same
+pure-recognition-function convention `resolveImageMediaRef` already established.
+
+**Full suite after all nine items above: 164/164 passing.** Frontend untouched throughout — every one
+of these is a WhatsApp-only or purely-internal capability, matching how every bot-facing feature in
+this codebase has worked since A1. **E2 (delegation between parents) remains explicitly blocked** —
+needs multi-parent family linking (fix-list item 1.3), not built — and was not started.
+
 ---
 
 ## "Family App" naming inventory (Aug 2026)

@@ -188,7 +188,7 @@ create table if not exists standing_rules (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references families(id),
   rule_text text not null,            -- articulated, human-readable restatement shown for yes/no confirmation
-  rule_kind text not null,            -- 'event_default' | 'timing_param'
+  rule_kind text not null,            -- 'event_default' | 'timing_param' | 'prep_association'
   match_keyword text,                 -- event_default: substring matched against a future message's title/text
   field text,                         -- event_default: which candidate field this defaults ('location'|'audience'|'duration_minutes'|'person')
   value text,                         -- event_default: the value to apply
@@ -206,6 +206,17 @@ create index if not exists standing_rules_pending_idx
   on standing_rules (family_id, sender_identifier, status) where deleted_at is null;
 create index if not exists standing_rules_active_idx
   on standing_rules (family_id, status) where deleted_at is null;
+
+-- D2 (preparation awareness, enhancement backlog): widens rule_kind to add
+-- 'prep_association' ("swimming always needs a towel") — standing_rules was
+-- already deployed under C1, so CREATE TABLE IF NOT EXISTS above is a no-op
+-- on that real database and can't retroactively touch its constraint; a
+-- real ALTER is required, same idempotent drop/add pattern as
+-- extraction_log's own state check further up this file.
+alter table standing_rules drop constraint if exists standing_rules_kind_check;
+alter table standing_rules add constraint standing_rules_kind_check check (
+  rule_kind in ('event_default','timing_param','prep_association')
+);
 
 create table if not exists bot_config (
   id uuid primary key default gen_random_uuid(),

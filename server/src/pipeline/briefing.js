@@ -57,6 +57,11 @@ export async function sweepDailyBriefings({ pool, calendar, messenger }) {
     const parents = familyMembers.filter((m) => m.is_parent);
     if (!parents.length) continue;
 
+    // D2 — active prep associations this family has taught (C1), consulted
+    // once per family per tick rather than once per parent (the same
+    // suggestions apply regardless of who's receiving them).
+    const taughtPrepRules = await standingRulesRepo.findActiveByKind({ familyId: family.id, ruleKind: 'prep_association' }, pool);
+
     const tomorrow = addDays(todayLocal, 1);
     let items;
     try {
@@ -80,7 +85,7 @@ export async function sweepDailyBriefings({ pool, calendar, messenger }) {
       );
       if (!mapping) continue; // no WhatsApp number on file for this parent — can't message them
       const relevant = items.filter((item) => isRelevantToParent(item, parent.id, familyMembers));
-      const reply = formatBriefingReply(relevant, { dateLabel: tomorrow });
+      const reply = formatBriefingReply(relevant, { dateLabel: tomorrow, taughtPrepRules });
       await messenger.send(mapping.external_identifier, reply);
       sent.push({ familyId: family.id, parentId: parent.id, to: mapping.external_identifier });
     }

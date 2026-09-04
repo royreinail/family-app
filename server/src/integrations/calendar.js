@@ -37,7 +37,7 @@ function clientFor(credentials) {
 /**
  * @returns {Promise<{provider: 'google', external_id: string}>}
  */
-export async function createEvent(credentials, { title, startDateTime, endDateTime, timeZone, colorId, attendeeNames, audience, activityIcon, personId, location, recurrence } = {}) {
+export async function createEvent(credentials, { title, startDateTime, endDateTime, timeZone, colorId, description, audience, activityIcon, personId, location, recurrence } = {}) {
   const calendar = clientFor(credentials);
   // Kept out of the visible summary/description on purpose —
   // extendedProperties.private is invisible in Calendar's own UI, so this
@@ -58,7 +58,11 @@ export async function createEvent(credentials, { title, startDateTime, endDateTi
     calendarId: credentials.calendar_id || 'primary',
     requestBody: {
       summary: title,
-      description: attendeeNames?.length ? `With: ${attendeeNames.join(', ')}` : undefined,
+      // B4 (provenance) — the original WhatsApp message text, verbatim
+      // (classify.js's calendarPayloadFromCandidate). This field had no
+      // real prior writer (attendeeNames, its only earlier source, was
+      // defined but never actually populated by any caller).
+      description,
       // Google's API rejects a bare dateTime (no UTC offset) unless timeZone
       // is also given — our extracted times are wall-clock in the family's
       // own timezone, so this has to travel with every write.

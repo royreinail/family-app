@@ -42,6 +42,8 @@ import {
   formatAdditionalEventsNote,
   applyStandingRuleDefaults,
   formatRulesList,
+  findConflicts,
+  formatConflictNote,
 } from './classify.js';
 import { scheduleReminder } from './reminders.js';
 
@@ -254,13 +256,32 @@ export async function handleIncomingMessage(message, deps) {
   let result;
   if (action.type === 'write_calendar') {
     const routing = await evaluateRules('assessment', 'event_task_routing', facts, { familyId, pool });
-    const eventRef = await calendar.createEvent(calendarPayloadFromCandidate(candidate, { familyMembers, timeZone }));
+    const payload = calendarPayloadFromCandidate(candidate, { familyMembers, timeZone, sourceText: text });
+
+    // B3 (conflict detection) — best-effort, never blocks the write: a
+    // listEvents failure (or simply no confidently-matched person to check
+    // against) just means no conflict note gets appended, same "flag, don't
+    // block" behavior the backlog itself specifies.
+    let conflictNote = '';
+    if (payload.personId) {
+      try {
+        const dayEvents = await calendar.listEvents({
+          timeMin: localDateTimeToUtcIso(candidate.date, '00:00', timeZone),
+          timeMax: localDateTimeToUtcIso(candidate.date, '23:59', timeZone),
+        });
+        conflictNote = formatConflictNote(findConflicts(payload, dayEvents), candidate.person);
+      } catch (err) {
+        console.error('Conflict check failed (non-blocking)', err);
+      }
+    }
+
+    const eventRef = await calendar.createEvent(payload);
     await extractionLogRepo.updateState(
       log.id,
       { state: 'written', resultingEventRef: eventRef, firedRule: firedRuleName },
       pool
     );
-    const reply = confirmReply(candidate);
+    const reply = confirmReply(candidate) + conflictNote;
     await messenger.send(senderIdentifier, reply);
     result = { outcome: 'written', destination: 'calendar', eventRef, reply, rule: classification.rule, routingRule: routing.rule, log };
   } else if (action.type === 'write_task_reminder') {
@@ -377,7 +398,7 @@ async function writeAdditionalEvent(extra, { familyId, familyMembers, timeZone, 
   candidate = overrideExplicitAudienceKeyword(text, candidate);
   candidate = applyForwardedSenderDefault(candidate, { wasForwarded, senderFamilyMember, familyMembers });
   if (candidate.time) {
-    const ref = await calendar.createEvent(calendarPayloadFromCandidate(candidate, { familyMembers, timeZone }));
+    const ref = await calendar.createEvent(calendarPayloadFromCandidate(candidate, { familyMembers, timeZone, sourceText: text }));
     return { status: 'written', candidate, ref };
   }
   const task = await tasksRepo.create(
@@ -786,7 +807,10 @@ async function promotePendingEventWithTime({ log, pending, newTime, newEndTime =
   const parkedTask = await tasksRepo.findBySourceExtractionLogId(pending.id, pool);
   if (parkedTask) await tasksRepo.softDelete(parkedTask.id, pool);
 
-  const eventRef = await calendar.createEvent(calendarPayloadFromCandidate(candidate, { familyMembers, timeZone }));
+  // B4 — the ORIGINAL message that started this parked event (pending's
+  // own raw_input), not the short follow-up answer ("8:30") that merely
+  // completed it — that's the actually useful provenance to keep.
+  const eventRef = await calendar.createEvent(calendarPayloadFromCandidate(candidate, { familyMembers, timeZone, sourceText: pending.raw_input }));
 
   await extractionLogRepo.updateState(
     pending.id,

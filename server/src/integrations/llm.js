@@ -64,20 +64,22 @@ const MANAGEMENT_TOOL = {
 // bot shows it back for a yes/no confirmation, and that confirmation reply
 // is matched directly against the pending DB record (see pipeline.js's
 // resolveStandingRule), never sent through a second LLM call. Deliberately
-// modeled as two narrow rule_kinds rather than a free-form
+// modeled as three narrow rule_kinds rather than a free-form
 // conditions/actions blob: 'event_default' fills in one field whenever a
 // future message's title/text contains a keyword (location/audience/
-// duration/person defaults — covers most of the doc's own examples), and
+// duration/person defaults — covers most of the doc's own examples),
 // 'timing_param' changes a single named bot setting (currently only the
-// daily briefing's send time, D-4). More elaborate rules (day-conditional
-// ownership like "Shani handles Tuesdays, I handle Thursdays") are still
-// recorded and shown back via rule_text for a human to read, but their
-// *application* is out of scope for this pass — a known, stated limitation,
-// not a silent gap (see standing_rules' own schema comment).
+// daily briefing's send time, D-4), and 'prep_association' (D2) teaches
+// what to pack/prepare for a kind of event ("swimming always needs a
+// towel"). More elaborate rules (day-conditional ownership like "Shani
+// handles Tuesdays, I handle Thursdays") are still recorded and shown back
+// via rule_text for a human to read, but their *application* is out of
+// scope for this pass — a known, stated limitation, not a silent gap (see
+// standing_rules' own schema comment).
 const RULE_TOOL = {
   name: 'record_rule',
   description:
-    'Record a standing/general instruction the sender wants remembered and applied to every future matching message — phrased as "always"/"never"/"from now on"/a general policy, not a one-off event or question. E.g. "art therapy is always at the Rothschild clinic", "never remind me before 07:00", "send the daily briefing at 21:00", "anything I forward from the school group is for both kids". Not for creating one specific event (use record_extraction), asking what already exists (use record_query), or changing one specific existing event (use record_management).',
+    'Record a standing/general instruction the sender wants remembered and applied to every future matching message — phrased as "always"/"never"/"from now on"/a general policy, not a one-off event or question. E.g. "art therapy is always at the Rothschild clinic", "never remind me before 07:00", "send the daily briefing at 21:00", "anything I forward from the school group is for both kids", "swimming always needs a towel". Not for creating one specific event (use record_extraction), asking what already exists (use record_query), or changing one specific existing event (use record_management).',
   input_schema: {
     type: 'object',
     properties: {
@@ -87,8 +89,8 @@ const RULE_TOOL = {
       },
       rule_kind: {
         type: 'string',
-        enum: ['event_default', 'timing_param'],
-        description: "'event_default' sets a default field value whenever a future message's title/text contains a keyword (location/audience/duration/person defaults). 'timing_param' changes a named bot setting (currently only the daily briefing's send time). Pick whichever the rule is actually closer to — a rule that doesn't cleanly fit either still gets recorded (rule_text alone is always meaningful), just without automatic application.",
+        enum: ['event_default', 'timing_param', 'prep_association'],
+        description: "'event_default' sets a default field value whenever a future message's title/text contains a keyword (location/audience/duration/person defaults). 'timing_param' changes a named bot setting (currently only the daily briefing's send time). 'prep_association' teaches a preparation reminder for a kind of event (use match_keyword for the event-type word, e.g. 'swimming', and `value` for the prep text, e.g. 'pack a towel and swimsuit' — field/param_name/param_value stay null). Pick whichever the rule is actually closer to — a rule that doesn't cleanly fit any still gets recorded (rule_text alone is always meaningful), just without automatic application.",
       },
       field: {
         type: ['string', 'null'],

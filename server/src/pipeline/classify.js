@@ -196,7 +196,7 @@ export function buildRecurrenceRule(recurrence) {
 // follow-up-answer branch (a `needs_time` event promoted once its time
 // finally arrives) so the two can never drift — an earlier bug was one
 // path getting end-time/duration handling that the other missed.
-export function calendarPayloadFromCandidate(candidate, { familyMembers = [], timeZone = 'UTC' } = {}) {
+export function calendarPayloadFromCandidate(candidate, { familyMembers = [], timeZone = 'UTC', sourceText = '' } = {}) {
   // A message giving an explicit end time or range ("9:00-18:00") keeps
   // that real duration instead of the 1-hour default (a real bug once had
   // "Commanders Day 9:00-18:00" landing as 9:00-10:00). An end at or before
@@ -240,6 +240,15 @@ export function calendarPayloadFromCandidate(candidate, { familyMembers = [], ti
     // RRULE array respectively).
     location: candidate.location || undefined,
     recurrence: buildRecurrenceRule(candidate.recurrence),
+    // B4 (provenance) — the original message text that produced this event,
+    // written into the Calendar event's own description field so it's
+    // still visible weeks later without digging through WhatsApp — also a
+    // debugging aid (tells "bot misread a clear message" apart from
+    // "message was genuinely ambiguous"). Never overwrites anything real:
+    // this field had no other use before B4 (attendeeNames, the only prior
+    // writer of description, was defined but never actually populated by
+    // any caller).
+    description: sourceText ? `From: "${sourceText}"` : undefined,
   };
 }
 
@@ -259,6 +268,37 @@ export function formatAdditionalEventsNote(items) {
     return `• ${candidate.title || 'Event'}${when ? `, ${when}` : ''}${personNote(candidate)}${suffix}`;
   });
   return `Also found ${items.length} more in that message:\n${lines.join('\n')}`;
+}
+
+// B3 (conflict detection) — does NOT block creation, only flags (per the
+// backlog: "surface it in the confirmation... does not block creation").
+// Scoped to the SAME person only, via the personId already resolved onto
+// the new event's own payload — checking every family member's calendar
+// for overlap would surface mostly noise, not real double-bookings.
+// `existingEvents` should already be narrowed to the same calendar day
+// (the caller's own listEvents range) — this only does the overlap
+// arithmetic, using the same naive-wall-clock-safe helpers as everywhere
+// else a start/end gets compared (naiveDateTimeToUtcMs).
+export function findConflicts(payload, existingEvents) {
+  if (!payload.personId) return [];
+  const newStart = naiveDateTimeToUtcMs(payload.startDateTime);
+  const newEnd = naiveDateTimeToUtcMs(payload.endDateTime);
+  return existingEvents.filter((item) => {
+    if (item.extendedProperties?.private?.personId !== payload.personId) return false;
+    const start = item.start?.dateTime;
+    const end = item.end?.dateTime;
+    if (!start || !end) return false;
+    const s = naiveDateTimeToUtcMs(start);
+    const e = naiveDateTimeToUtcMs(end);
+    return s < newEnd && newStart < e; // real interval overlap, not just a shared day
+  });
+}
+
+export function formatConflictNote(conflicts, personName) {
+  if (!conflicts?.length) return '';
+  const items = conflicts.map((c) => `${c.summary || 'something'} at ${c.start?.dateTime?.slice(11, 16) || 'an unknown time'}`).join(', ');
+  const verb = conflicts.length > 1 ? 'have' : 'has';
+  return `\n(note: ${personName || 'they'} already ${verb} ${items})`;
 }
 
 export function formatDateTime(date, time) {
@@ -510,11 +550,54 @@ export function isRelevantToParent(item, parentMemberId, familyMembers) {
   return false;
 }
 
+// D2 (preparation awareness) — D-5's built-in inference table: "events
+// imply tasks... the thing that actually gets forgotten is usually not the
+// event, it's the prep." D-5 explicitly accepts this will occasionally be
+// wrong or irrelevant for a given event — same "keyword substring against
+// the title" matching convention as activityIcons.js's own resolveIcon, not
+// a fixed enum, since a real title can say the same thing many ways. Kept
+// short and personal-tool-scale on purpose, English + Hebrew.
+export const BUILT_IN_PREP_ASSOCIATIONS = [
+  { keyword: 'swim', suggestion: 'pack a towel and swimsuit' },
+  { keyword: 'שחיה', suggestion: 'להכין מגבת ובגד ים' },
+  { keyword: 'gym', suggestion: 'pack gym clothes' },
+  { keyword: 'sport', suggestion: 'pack sports clothes' },
+  { keyword: 'trip', suggestion: 'sign the permission form and send any money needed' },
+  { keyword: 'טיול', suggestion: 'לחתום על טופס ולשלוח כסף אם צריך' },
+  { keyword: 'birthday', suggestion: 'bring a gift' },
+  { keyword: 'יום הולדת', suggestion: 'להביא מתנה' },
+  { keyword: 'therapy', suggestion: 'bring any paperwork or forms that are due' },
+];
+
+// D2 — a Roy-taught 'prep_association' standing rule (C1) is checked FIRST
+// and wins over the built-in guess for the same keyword (an explicitly
+// taught fact is more trustworthy than an inferred one); the built-in table
+// only fills in when nothing was taught for this title. Always a
+// suggestion list, per D-5 — see formatBriefingReply, which labels this
+// section explicitly and never turns it into a task.
+export function inferPrepSuggestions(title, taughtRules = []) {
+  const haystack = (title || '').toLowerCase();
+  const taught = taughtRules
+    .filter((r) => r.match_keyword && haystack.includes(r.match_keyword.toLowerCase()))
+    .map((r) => r.value);
+  if (taught.length) return [...new Set(taught)];
+  const builtIn = BUILT_IN_PREP_ASSOCIATIONS.filter((a) => haystack.includes(a.keyword.toLowerCase())).map((a) => a.suggestion);
+  return [...new Set(builtIn)];
+}
+
 // D1 — same one-line-per-event convention as formatQueryReply's own
-// formatEventLine (reused directly, not duplicated).
-export function formatBriefingReply(events, { dateLabel } = {}) {
+// formatEventLine (reused directly, not duplicated). D2's prep suggestions
+// (when any active association matches an event's title) get their own
+// clearly-labeled section, per D-5 — a suggestion, never silently added as
+// a task.
+export function formatBriefingReply(events, { dateLabel, taughtPrepRules = [] } = {}) {
   if (!events.length) return `Nothing on the calendar for tomorrow (${dateLabel}).`;
-  return `Here's tomorrow (${dateLabel}):\n${events.map(formatEventLine).join('\n')}`;
+  const base = `Here's tomorrow (${dateLabel}):\n${events.map(formatEventLine).join('\n')}`;
+  const prepLines = events.flatMap((item) =>
+    inferPrepSuggestions(item.summary, taughtPrepRules).map((s) => `• ${item.summary || 'Untitled'} — ${s}`)
+  );
+  if (!prepLines.length) return base;
+  return `${base}\n\n🎒 Possible prep (a suggestion, not added automatically):\n${prepLines.join('\n')}`;
 }
 
 export function addDays(dateStr, days) {

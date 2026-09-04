@@ -14,6 +14,7 @@ import { todayInTimeZone } from '../pipeline/classify.js';
 import * as calendarIntegration from '../integrations/calendar.js';
 import * as messengerIntegration from '../integrations/messenger.js';
 import * as llmIntegration from '../integrations/llm.js';
+import * as transcriptionIntegration from '../integrations/transcription.js';
 
 // A shared photo arrives one of two shapes depending on how the sender
 // sent it: the native "image" type (auto-compressed), or a "document"
@@ -31,6 +32,21 @@ export function resolveImageMediaRef(message) {
   }
   if (message?.type === 'document' && message.document?.id && message.document?.mime_type?.startsWith('image/')) {
     return { id: message.document.id, caption: message.document.caption };
+  }
+  return null;
+}
+
+// E1 (voice notes as input) — WhatsApp's own "voice message" recording UI
+// and a regular shared audio file both arrive as the same message type
+// ('audio'), distinguished only by an internal `voice` flag Meta doesn't
+// actually require any different handling for here — either way it's audio
+// bytes behind a media id, transcribed and treated as if the sender had
+// typed it. Pure and exported for the same reason resolveImageMediaRef is
+// (real test coverage without needing the actual WhatsApp/transcription
+// calls).
+export function resolveAudioMediaRef(message) {
+  if (message?.type === 'audio' && message.audio?.id) {
+    return { id: message.audio.id, mimeType: message.audio.mime_type };
   }
   return null;
 }
@@ -105,24 +121,47 @@ export function webhookRouter() {
         }
       }
 
+      // E1 (voice notes as input) — download the same way an image's bytes
+      // are, then hand it to the transcription boundary; the result is
+      // plain `text`, so everything downstream (extraction, commands,
+      // corrections) runs completely unchanged, exactly like a photo's
+      // caption already does. `audioTranscribeFailed` covers BOTH a real
+      // download failure and "no transcription credential is configured at
+      // all" (transcriptionIntegration.transcribe's own explicit error for
+      // that case) — either way there's nothing to extract from, and the
+      // sender gets an honest reply either way, not silence.
+      const audioRef = resolveAudioMediaRef(message);
+      let audioTranscribeFailed = false;
+      if (audioRef) {
+        try {
+          const audio = await messengerIntegration.downloadMedia(audioRef.id);
+          text = (await transcriptionIntegration.transcribe(audio)) || text;
+        } catch (err) {
+          console.error('Failed to transcribe WhatsApp voice note', err);
+          audioTranscribeFailed = true;
+        }
+      }
+
       // Nothing at all for the pipeline to work with — either the image
-      // download itself failed, or the message is some other type we
-      // don't read (audio, video, sticker, location, a non-image
-      // document...). Previously this fell all the way through to
-      // extraction_classification:nothing_usable, whose action is
-      // `{type: 'stop', reply: 'none'}` — completely silent, indistinguishable
-      // from Meta never having called us at all. Say so directly instead;
-      // "every message should receive at least some response" (Roy). One
-      // deliberate exception: a 👍-style reaction to a bot message is not a
-      // request needing a response — replying to every reaction would be
-      // its own new annoyance, not a fix.
+      // download itself failed, the voice note couldn't be transcribed, or
+      // the message is some other type we don't read (video, sticker,
+      // location, a non-image document...). Previously this fell all the
+      // way through to extraction_classification:nothing_usable, whose
+      // action is `{type: 'stop', reply: 'none'}` — completely silent,
+      // indistinguishable from Meta never having called us at all. Say so
+      // directly instead; "every message should receive at least some
+      // response" (Roy). One deliberate exception: a 👍-style reaction to a
+      // bot message is not a request needing a response — replying to every
+      // reaction would be its own new annoyance, not a fix.
       const isReaction = message.type === 'reaction';
-      if (!isReaction && (imageDownloadFailed || (!text && !image && message.type !== 'text' && message.type !== 'button'))) {
+      if (!isReaction && (imageDownloadFailed || audioTranscribeFailed || (!text && !image && message.type !== 'text' && message.type !== 'button'))) {
         await messengerIntegration.send(
           senderIdentifier,
           imageDownloadFailed
             ? "I couldn't download that photo — mind sending it again?"
-            : "I can only read text messages and photos right now — try resending as one of those."
+            : audioTranscribeFailed
+              ? "I can't understand voice notes yet — mind typing that instead?"
+              : "I can only read text messages and photos right now — try resending as one of those."
         );
         return;
       }
