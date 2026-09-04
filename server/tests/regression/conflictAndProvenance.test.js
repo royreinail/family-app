@@ -98,3 +98,41 @@ test('a capture for an unmatched/unknown person skips the conflict check silentl
   );
   assert.equal(result.reply, 'Dance class, 2026-08-20 16:00 — added ✅');
 });
+
+// Real gap caught on a later audit pass: the direct write_calendar branch
+// got a conflict check, but the follow-up-promotion path (a date-only
+// message parked as needs_time, later completed by a bare time answer)
+// didn't — even though it ends in the exact same kind of Calendar create.
+test('a conflict is also flagged when an event is completed via the "what time?" follow-up, not just a direct write', async () => {
+  const { family, parent, knownSender } = await seedFamily(pool);
+  const calendar = createFakeCalendar();
+  const messenger = createFakeMessenger();
+  const llm = createFakeLlm({
+    'Art class for Dana Tuesday 4pm': {
+      title: 'Art class', date: '2026-09-08', time: '16:00', end_time: null, person: 'Dana', category: 'activity',
+      location: null, recurrence: null, reminder_requested: false, reminder_datetime: null, audience: 'family', activity_icon: '🎨',
+    },
+    'Piano for Dana Tuesday': {
+      title: 'Piano', date: '2026-09-08', time: null, end_time: null, person: 'Dana', category: 'activity',
+      location: null, recurrence: null, reminder_requested: false, reminder_datetime: null, audience: 'family', activity_icon: '🎹',
+    },
+  });
+
+  await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Art class for Dana Tuesday 4pm', externalMessageId: 'wamid.cp4' },
+    { pool, llmExtract: llm.extract, calendar, messenger, familyMembers: [parent] }
+  );
+  const parked = await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Piano for Dana Tuesday', externalMessageId: 'wamid.cp5' },
+    { pool, llmExtract: llm.extract, calendar, messenger, familyMembers: [parent] }
+  );
+  assert.equal(parked.outcome, 'needs_time');
+
+  const completed = await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: '4:30pm', externalMessageId: 'wamid.cp6' },
+    { pool, llmExtract: llm.extract, calendar, messenger, familyMembers: [parent] }
+  );
+
+  assert.equal(completed.outcome, 'written');
+  assert.match(completed.reply, /note: Dana already has Art class at 16:00/);
+});

@@ -11,6 +11,7 @@ import { seedFamily } from '../setup/seedFamily.js';
 import { createFakeCalendar, createFakeMessenger, createFakeLlm } from '../setup/fakes.js';
 import { handleIncomingMessage } from '../../src/pipeline/pipeline.js';
 import * as tasksRepo from '../../src/repositories/tasks.js';
+import * as standingRulesRepo from '../../src/repositories/standingRules.js';
 import { formatAdditionalEventsNote } from '../../src/pipeline/classify.js';
 
 let pool;
@@ -126,4 +127,41 @@ test('additional events inherit the forwarded-sender person default and the expl
   const written = [...calendar.events.values()].find((e) => e.title === 'Extra thing');
   assert.equal(written.personId, parent.id, 'forwarded-sender default applied to the additional item too');
   assert.equal(written.audience, 'parent_only', 'explicit "just us parents" keyword applied to the additional item too');
+});
+
+// Real gap caught on a later audit pass: writeAdditionalEvent originally
+// never called applyStandingRuleDefaults at all — a taught C1 rule applied
+// to the primary item but silently NOT to an additional item in the exact
+// same message, even for the identical matching title.
+test('a taught C1 event-default rule applies to an additional_events item, not just the primary one', async () => {
+  const { family, knownSender } = await seedFamily(pool);
+  const calendar = createFakeCalendar();
+  const messenger = createFakeMessenger();
+  await standingRulesRepo.create(
+    { familyId: family.id, ruleText: 'Art therapy is always at the Rothschild clinic.', ruleKind: 'event_default', matchKeyword: 'art therapy', field: 'location', value: 'Rothschild clinic', senderIdentifier: knownSender },
+    pool
+  ).then((r) => standingRulesRepo.confirm(r.id, pool));
+
+  const llm = createFakeLlm({
+    'Swimming Tue 4pm, art therapy Thu 5pm': baseCandidate({
+      additional_events: [
+        { title: 'Art therapy', date: '2026-09-10', time: '17:00', end_time: null, person: null, location: null, audience: 'family', activity_icon: '🎨' },
+      ],
+    }),
+  });
+
+  await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Swimming Tue 4pm, art therapy Thu 5pm', externalMessageId: 'wamid.5' },
+    { pool, llmExtract: llm.extract, calendar, messenger }
+  );
+
+  const writtenArtTherapy = [...calendar.events.values()].find((e) => e.title === 'Art therapy');
+  assert.equal(writtenArtTherapy.location, 'Rothschild clinic', "the taught default filled the additional item's location too");
+
+  // Cross-contamination check: the PRIMARY item ("Swimming") must NOT pick
+  // up the "art therapy" keyword just because it happens to appear
+  // elsewhere in the same raw message text — each event's defaults are
+  // scoped to its own title now, not the whole shared message.
+  const writtenSwimming = [...calendar.events.values()].find((e) => e.title === 'Swimming');
+  assert.equal(writtenSwimming.location, undefined, "a sibling event's keyword must not bleed onto an unrelated event in the same message");
 });

@@ -229,7 +229,15 @@ export async function handleIncomingMessage(message, deps) {
   // below, filling in gaps only (see applyStandingRuleDefaults) — a taught
   // default, not a silent override of whatever the message itself said.
   const activeEventDefaults = await standingRulesRepo.findActiveByKind({ familyId, ruleKind: 'event_default' }, pool);
-  candidate = applyStandingRuleDefaults(candidate, text, activeEventDefaults);
+  // A3 — a multi-event message shares ONE raw text across several distinct
+  // events; matching each one's defaults against the whole raw text (not
+  // just its own title) would let a keyword belonging to one event bleed
+  // onto an unrelated sibling in the same message (caught while adding a
+  // regression test for this pairing). Scope to title-only whenever
+  // there's more than one event in play — a genuinely single-event message
+  // keeps the richer title-or-raw-text match (a taught keyword phrase can
+  // still apply even when the LLM's own title paraphrased it away).
+  candidate = applyStandingRuleDefaults(candidate, candidate.additional_events?.length ? '' : text, activeEventDefaults);
 
   // "today"/"tomorrow" are unambiguous enough to not trust to LLM date
   // arithmetic — see classify.js for why (a real off-by-one was observed).
@@ -354,7 +362,7 @@ export async function handleIncomingMessage(message, deps) {
     const items = [];
     for (const extra of candidate.additional_events) {
       const written = await writeAdditionalEvent(extra, {
-        familyId, familyMembers, timeZone, text, wasForwarded, senderFamilyMember, pool, log, calendar,
+        familyId, familyMembers, timeZone, text, wasForwarded, senderFamilyMember, pool, log, calendar, activeEventDefaults,
       });
       if (written) items.push(written);
     }
@@ -386,15 +394,23 @@ export async function handleIncomingMessage(message, deps) {
 // exists to stop losing — so a second full rules-engine pass per item isn't
 // worth the complexity), and no reminder handling (a personal "remind me"
 // request is the sender's own ask, not something that applies per date in a
-// forwarded list). Still gets the same forwarded-sender person default and
-// explicit-audience-keyword override as the primary item, since both are
-// about the *whole* message's context (who forwarded it, "just us parents"),
-// not anything specific to being first vs. additional. Returns null (skip,
+// forwarded list). Still gets the same C1 standing-rule event defaults, the
+// same forwarded-sender person default, and the same explicit-audience-
+// keyword override as the primary item — all three are about the *whole*
+// message's context (taught defaults, who forwarded it, "just us parents"),
+// not anything specific to being first vs. additional, so an additional
+// item shouldn't silently miss a default the primary item would have gotten
+// for the exact same title (a real gap caught on a later audit pass: this
+// used to skip applyStandingRuleDefaults entirely). Returns null (skip,
 // same as the primary item's own nothing-usable case) when there's no date
 // at all to act on.
-async function writeAdditionalEvent(extra, { familyId, familyMembers, timeZone, text, wasForwarded, senderFamilyMember, pool, log, calendar }) {
+async function writeAdditionalEvent(extra, { familyId, familyMembers, timeZone, text, wasForwarded, senderFamilyMember, pool, log, calendar, activeEventDefaults }) {
   if (!extra?.date) return null;
   let candidate = { ...extra, reminder_requested: false, reminder_datetime: null };
+  // Title-only match (see the primary item's own call site for why): this
+  // item's title is the only thing that's actually specific to IT, not the
+  // shared raw message text every sibling in additional_events also sees.
+  candidate = applyStandingRuleDefaults(candidate, '', activeEventDefaults);
   candidate = overrideExplicitAudienceKeyword(text, candidate);
   candidate = applyForwardedSenderDefault(candidate, { wasForwarded, senderFamilyMember, familyMembers });
   if (candidate.time) {
@@ -810,7 +826,26 @@ async function promotePendingEventWithTime({ log, pending, newTime, newEndTime =
   // B4 — the ORIGINAL message that started this parked event (pending's
   // own raw_input), not the short follow-up answer ("8:30") that merely
   // completed it — that's the actually useful provenance to keep.
-  const eventRef = await calendar.createEvent(calendarPayloadFromCandidate(candidate, { familyMembers, timeZone, sourceText: pending.raw_input }));
+  const payload = calendarPayloadFromCandidate(candidate, { familyMembers, timeZone, sourceText: pending.raw_input });
+
+  // B3 — this promotion is a real Calendar create, the same as the direct
+  // write_calendar branch's own (a date-only message parked as `needs_time`
+  // and then answered "8:30" is still, in the end, exactly the same kind of
+  // write) — same best-effort, never-blocks-the-write conflict check.
+  let conflictNote = '';
+  if (payload.personId) {
+    try {
+      const dayEvents = await calendar.listEvents({
+        timeMin: localDateTimeToUtcIso(candidate.date, '00:00', timeZone),
+        timeMax: localDateTimeToUtcIso(candidate.date, '23:59', timeZone),
+      });
+      conflictNote = formatConflictNote(findConflicts(payload, dayEvents), candidate.person);
+    } catch (err) {
+      console.error('Conflict check failed (non-blocking)', err);
+    }
+  }
+
+  const eventRef = await calendar.createEvent(payload);
 
   await extractionLogRepo.updateState(
     pending.id,
@@ -819,7 +854,7 @@ async function promotePendingEventWithTime({ log, pending, newTime, newEndTime =
   );
   await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
 
-  const reply = confirmReply(candidate);
+  const reply = confirmReply(candidate) + conflictNote;
   await messenger.send(senderIdentifier, reply);
   return { outcome: 'written', destination: 'calendar', eventRef, reply, promotedFrom: pending.id, retiredTaskId: parkedTask?.id ?? null, log };
 }

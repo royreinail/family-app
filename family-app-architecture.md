@@ -1154,6 +1154,50 @@ of these is a WhatsApp-only or purely-internal capability, matching how every bo
 this codebase has worked since A1. **E2 (delegation between parents) remains explicitly blocked** —
 needs multi-parent family linking (fix-list item 1.3), not built — and was not started.
 
+**Audit pass (same day) — two real cross-feature gaps caught and fixed.** Roy asked for a systematic
+recheck of every new field's full trace (schema → LLM tool schema → pipeline consumption → repo →
+back out) across all nine items above, given this session's history of exactly this class of bug
+(item 6's `sourceMappingsRepo.create()` existing but never being called). Grepping every new field
+name end-to-end found the schema/LLM/repo wiring itself fully consistent (no orphaned or
+never-produced field anywhere) — but surfaced two real behavioral gaps where one feature's logic
+wasn't applied somewhere a sibling code path clearly implied it should be:
+- **C1 defaults never reached A3's additional events.** `writeAdditionalEvent` built its candidate
+  straight from the LLM's raw item, skipping `applyStandingRuleDefaults` entirely — a taught rule
+  ("art therapy is always at the Rothschild clinic") applied to the *primary* item in a multi-event
+  message but silently not to a second "art therapy" event later in the very same message. Fixed by
+  passing `activeEventDefaults` into `writeAdditionalEvent` and calling
+  `applyStandingRuleDefaults` there too.
+- **That same fix exposed a second, subtler bug:** `applyStandingRuleDefaults`'s matching was written
+  for the single-event case, where checking the rule's `match_keyword` against *both* the raw message
+  text and the event's own title is intentional (a taught keyword phrase can still apply even when
+  the LLM's title paraphrased it away). A multi-event message breaks that assumption — every event in
+  `additional_events` shares the SAME raw text, so matching each one's defaults against the whole raw
+  text let a keyword belonging to one event bleed onto an unrelated sibling (a "Swimming" event
+  incorrectly inheriting the "art therapy" location default purely because the words "art therapy"
+  appeared elsewhere in the same forwarded message). Fixed by scoping every event's match to its own
+  `title` only whenever `additional_events` is present, keeping the richer title-or-raw-text match
+  for the ordinary single-event message.
+- **B3's conflict check only ran on the direct write_calendar branch**, not on the
+  follow-up-promotion path (`promotePendingEventWithTime`) — even though completing a parked
+  `needs_time` event with a time answer is exactly the same kind of real Calendar create the direct
+  branch already flags conflicts for. Fixed by adding the identical best-effort conflict check there
+  too.
+
+Both fixes are additive-only (no existing behavior changed for a single, non-parked event) and each
+has a dedicated regression test: `multiEventExtraction.test.js`'s new "a taught C1 event-default rule
+applies to an additional_events item, not just the primary one" (asserting BOTH that the additional
+item gets the default AND that the primary item does NOT cross-contaminate), and
+`conflictAndProvenance.test.js`'s new "a conflict is also flagged when an event is completed via the
+'what time?' follow-up." **Deliberately left as-is, not a gap:** A3's additional events still don't
+get their own B3 conflict check (would multiply `listEvents` calls per additional item for a
+lower-value, rarer case) and B4 excludes the RRULE for additional events (no `recurrence` field on
+`additional_events` at all) — both stated scope cuts from the original build, re-confirmed as
+deliberate rather than accidental during this pass, not upgraded to bugs.
+
+Full suite after the audit fixes: 166/166 passing (2 new tests). Also fixed in passing: a stale JSDoc
+return-type comment on `llm.js`'s `extract()` that still listed only two `rule_kind` values after D2
+added the third (`prep_association`) — cosmetic, no runtime effect, caught by the same grep sweep.
+
 ---
 
 ## "Family App" naming inventory (Aug 2026)
