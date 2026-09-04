@@ -1198,6 +1198,44 @@ Full suite after the audit fixes: 166/166 passing (2 new tests). Also fixed in p
 return-type comment on `llm.js`'s `extract()` that still listed only two `rule_kind` values after D2
 added the third (`prep_association`) — cosmetic, no runtime effect, caught by the same grep sweep.
 
+**Event adoption — manually-added Google Calendar events (✅ built, same day).** Roy's own follow-up
+question: "not all of the entries will be done by the bot" — is that actually handled? Every calendar
+read in this app already pulls the WHOLE connected calendar (`calendar.js`'s `listEvents` is a plain
+Google API range query, completely source-agnostic — nothing here was ever bot-only), so a
+manually-added event was always *visible*. But it has no `personId` tag (only the bot sets that at
+creation), so it fell back to a live text-match on every single read and, worse, was completely
+invisible to B3's conflict check, which only ever compares `personId` directly with no text-match
+fallback at all — a real double-booking against a manually-added event went unflagged.
+
+New `pipeline/eventAdoption.js`'s `adoptUntrackedEvents`: when exactly one family member's name
+confidently text-matches a not-yet-tracked event (`matchSingleFamilyMember` against title+description,
+same "don't guess" philosophy used everywhere else in this codebase), it patches `personId` onto the
+*real* Calendar event (invisible metadata only, same as every other personId write — nothing visible
+changes) and writes a synthetic `extraction_log` row (state `'written'`, `sender_identifier: null`,
+`ai_candidate.adopted: true`) so it shows up in the app's own audit trail and — just as importantly —
+so that row's presence is what tells every future sweep "already considered this one," rather than
+re-matching from scratch on every read. Zero or ambiguous (2+) name matches are left alone, same as
+`matchSingleFamilyMember` itself. Wired into every calendar-read path per Roy's own choice ("everywhere,"
+not just the daily brief): A1's read-back query, A2's cancel/reschedule search, B3's conflict check
+(both the direct write and the follow-up-promotion path), D1's daily briefing sweep, and the kid
+dashboard route — one shared function, so an event is adopted the first time ANY feature sees it, not
+just whichever one happens to run first. Best-effort per item (a failed patch/write is logged and
+skipped, never blocks the actual read it was running ahead of), and the caller's own in-memory `items`
+batch is updated in place too — so, for example, B3's conflict check running immediately after
+adoption in the same pipeline turn sees the new personId right away, not only on a future read.
+
+Threading `familyId` into `adoptUntrackedEvents`'s call sites required adding it to several
+pipeline.js function signatures that didn't carry it before (`handleReadBackQuery`, `handleCorrection`,
+`promotePendingEventWithTime`) — pure plumbing, no behavior change to any existing call site that
+doesn't also touch calendar reads.
+
+`tests/regression/eventAdoption.test.js` (6 tests): a confident single-name match gets adopted (patch +
+local record, in-batch mutation); zero/ambiguous matches are left alone; an already-tracked event is
+skipped; a second read of the same event doesn't re-adopt it (idempotency via the local record, not
+just an in-memory check); a manually-added event is adopted and found during a real A1 person-scoped
+query; and — the actual motivating scenario — **a real double-booking against a manually-added event is
+now correctly flagged**, which was silently impossible before this. Full suite: 172/172 passing.
+
 ---
 
 ## "Family App" naming inventory (Aug 2026)

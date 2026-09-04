@@ -46,6 +46,7 @@ import {
   formatConflictNote,
 } from './classify.js';
 import { scheduleReminder } from './reminders.js';
+import { adoptUntrackedEvents } from './eventAdoption.js';
 
 async function withRetry(fn, { attempts = 3, baseDelayMs = 200 } = {}) {
   let lastErr;
@@ -90,7 +91,7 @@ export async function handleIncomingMessage(message, deps) {
 
   // 2. Correction-reply path — not a command, not a rule match.
   if (replyToExtractionLogId) {
-    return handleCorrection({ log, replyToExtractionLogId, text, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers });
+    return handleCorrection({ log, replyToExtractionLogId, text, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers, familyId });
   }
 
   // 2b. Commands check — hardcoded, before gate rules, before any LLM call.
@@ -138,6 +139,7 @@ export async function handleIncomingMessage(message, deps) {
         pool,
         timeZone,
         familyMembers,
+        familyId,
       });
     }
   }
@@ -209,7 +211,7 @@ export async function handleIncomingMessage(message, deps) {
   // forwarded-sender default, assessment rules, a write) — none of those
   // make sense for "tell me what's already there."
   if (candidate.type === 'query') {
-    return handleReadBackQuery({ log, candidate, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers, calendarConnected });
+    return handleReadBackQuery({ log, candidate, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers, familyId, calendarConnected });
   }
   // A2 — same reasoning: "cancel dance class Thursday" is a fundamentally
   // different shape from a capture, branches off before the capture-only
@@ -273,10 +275,16 @@ export async function handleIncomingMessage(message, deps) {
     let conflictNote = '';
     if (payload.personId) {
       try {
-        const dayEvents = await calendar.listEvents({
+        let dayEvents = await calendar.listEvents({
           timeMin: localDateTimeToUtcIso(candidate.date, '00:00', timeZone),
           timeMax: localDateTimeToUtcIso(candidate.date, '23:59', timeZone),
         });
+        // Adopt any manually-added event on this same day BEFORE checking
+        // for conflicts — findConflicts only ever compares personId
+        // directly, with no text-match fallback, so a real double-booking
+        // against a manually-added event would otherwise go completely
+        // unflagged.
+        dayEvents = await adoptUntrackedEvents(dayEvents, { familyId, familyMembers, updateEvent: calendar.updateEvent, pool });
         conflictNote = formatConflictNote(findConflicts(payload, dayEvents), candidate.person);
       } catch (err) {
         console.error('Conflict check failed (non-blocking)', err);
@@ -435,7 +443,7 @@ async function writeAdditionalEvent(extra, { familyId, familyMembers, timeZone, 
 // personId-first/text-match-fallback logic the dashboard's own card
 // coloring already relies on (matchMembersToEvent) — one shared notion of
 // "whose event is this" everywhere it's asked, not a third guess.
-async function handleReadBackQuery({ log, candidate, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers, calendarConnected }) {
+async function handleReadBackQuery({ log, candidate, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers, familyId, calendarConnected }) {
   if (!calendarConnected) {
     await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
     await messenger.send(senderIdentifier, "Google Calendar isn't connected yet — connect it from Settings first.");
@@ -448,6 +456,11 @@ async function handleReadBackQuery({ log, candidate, calendar, messenger, sender
   let items;
   try {
     items = await calendar.listEvents({ timeMin, timeMax });
+    // Adopt manually-added events into local tracking on this read too —
+    // "everywhere the bot reads the calendar," not just the daily
+    // briefing — so a person-scoped query ("what does Gaia have Tuesday?")
+    // finds a manually-added event the same way it finds a bot-created one.
+    items = await adoptUntrackedEvents(items, { familyId, familyMembers, updateEvent: calendar.updateEvent, pool });
   } catch (err) {
     await extractionLogRepo.updateState(log.id, { state: 'failed', error: String(err?.message || err) }, pool);
     await messenger.send(senderIdentifier, "Couldn't check the calendar just now — try again in a bit.");
@@ -514,6 +527,10 @@ async function handleManagementRequest({ log, candidate, calendar, messenger, se
   let items;
   try {
     items = await calendar.listEvents({ timeMin, timeMax });
+    // Adopt manually-added events here too — a parent should be able to
+    // "cancel"/"move" a manually-added event exactly like a bot-created
+    // one, and future features (personId-based matching) benefit either way.
+    items = await adoptUntrackedEvents(items, { familyId, familyMembers, updateEvent: calendar.updateEvent, pool });
   } catch (err) {
     await extractionLogRepo.updateState(log.id, { state: 'failed', error: String(err?.message || err) }, pool);
     await messenger.send(senderIdentifier, "Couldn't check the calendar just now — try again in a bit.");
@@ -700,7 +717,7 @@ async function handleCommand({ command, log, familyId, senderIdentifier, calenda
   return { outcome: 'unknown_command', log };
 }
 
-async function handleCorrection({ log, replyToExtractionLogId, text, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers = [] }) {
+async function handleCorrection({ log, replyToExtractionLogId, text, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers = [], familyId }) {
   const original = await extractionLogRepo.findById(replyToExtractionLogId, pool);
   if (!original) {
     await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
@@ -717,7 +734,7 @@ async function handleCorrection({ log, replyToExtractionLogId, text, calendar, m
   if (original.state === 'needs_time' && newTime) {
     const { endTime: newEndTime } = parseCorrectedTimeRange(text);
     return promotePendingEventWithTime({
-      log, pending: original, newTime, newEndTime, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers,
+      log, pending: original, newTime, newEndTime, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers, familyId,
     });
   }
 
@@ -814,7 +831,7 @@ async function applyPersonCorrection({ log, original, matchedMember, calendar, m
 // the person — all we add is the time. Then it graduates from a tentative
 // task to a real calendar event, and the placeholder task the date-only
 // branch created is retired so it doesn't linger in "list tasks".
-async function promotePendingEventWithTime({ log, pending, newTime, newEndTime = null, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers = [] }) {
+async function promotePendingEventWithTime({ log, pending, newTime, newEndTime = null, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers = [], familyId }) {
   // A range answer ("8:30-18:00") carries a real end time the way the
   // *initial* message already could (item 1) — real bug: the follow-up
   // merge only ever kept the start, silently dropping a given end time.
@@ -835,10 +852,11 @@ async function promotePendingEventWithTime({ log, pending, newTime, newEndTime =
   let conflictNote = '';
   if (payload.personId) {
     try {
-      const dayEvents = await calendar.listEvents({
+      let dayEvents = await calendar.listEvents({
         timeMin: localDateTimeToUtcIso(candidate.date, '00:00', timeZone),
         timeMax: localDateTimeToUtcIso(candidate.date, '23:59', timeZone),
       });
+      dayEvents = await adoptUntrackedEvents(dayEvents, { familyId, familyMembers, updateEvent: calendar.updateEvent, pool });
       conflictNote = formatConflictNote(findConflicts(payload, dayEvents), candidate.person);
     } catch (err) {
       console.error('Conflict check failed (non-blocking)', err);

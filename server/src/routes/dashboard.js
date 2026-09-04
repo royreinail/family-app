@@ -10,6 +10,7 @@ import * as activityIconsRepo from '../repositories/activityIcons.js';
 import * as googleCredentialsRepo from '../repositories/googleCredentials.js';
 import * as calendar from '../integrations/calendar.js';
 import { shouldShowOnKidBoard, iconForCategory, sanitizeActivityIcon, matchMembersToEvent } from '../pipeline/classify.js';
+import { adoptUntrackedEvents } from '../pipeline/eventAdoption.js';
 import { requireFamily } from './middleware.js';
 
 function startOfTomorrow(timezone) {
@@ -59,6 +60,15 @@ export function dashboardRouter() {
     let items = [];
     try {
       items = await calendar.listEvents(credentials, { timeMin, timeMax });
+      // A kid's event isn't always the one the bot wrote — someone may
+      // have added it straight in Google Calendar. Adopt it into local
+      // tracking here too so it gets the same personId-based card coloring
+      // a bot-created event already gets, not just a live text guess.
+      items = await adoptUntrackedEvents(items, {
+        familyId: req.familyId,
+        familyMembers: members,
+        updateEvent: (id, patch) => calendar.updateEvent(credentials, id, patch),
+      });
     } catch (err) {
       console.error('Failed to list calendar events', err);
       // A dead refresh token (see calendar.js's isReauthRequiredError) is

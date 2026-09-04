@@ -13,6 +13,7 @@ import * as googleCredentialsRepo from '../repositories/googleCredentials.js';
 import * as sourceMappingsRepo from '../repositories/sourceMappings.js';
 import * as standingRulesRepo from '../repositories/standingRules.js';
 import { todayInTimeZone, nowTimeInTimeZone, shouldSendBriefingNow, addDays, localDateTimeToUtcIso, isRelevantToParent, formatBriefingReply } from './classify.js';
+import { adoptUntrackedEvents } from './eventAdoption.js';
 
 // D-4's stated default; overridden per-family by an active 'timing_param'
 // standing rule named 'briefing_send_time' (C1) — e.g. "send the briefing
@@ -68,6 +69,19 @@ export async function sweepDailyBriefings({ pool, calendar, messenger }) {
       items = await calendar.listEvents(credentials, {
         timeMin: localDateTimeToUtcIso(tomorrow, '00:00', timeZone),
         timeMax: localDateTimeToUtcIso(tomorrow, '23:59', timeZone),
+      });
+      // Not every event on the calendar was created by the bot — someone
+      // may have added tomorrow's dentist appointment straight in Google
+      // Calendar. Adopt it into local tracking here too (personId patched
+      // onto the real event, a synthetic extraction_log row written) so it
+      // gets the exact same person-scoped, per-parent filtering
+      // (isRelevantToParent) a bot-created event already gets, not just a
+      // best-effort text guess.
+      items = await adoptUntrackedEvents(items, {
+        familyId: family.id,
+        familyMembers,
+        updateEvent: (id, patch) => calendar.updateEvent(credentials, id, patch),
+        pool,
       });
     } catch (err) {
       // A transient Calendar API failure shouldn't mark today as "sent" —
