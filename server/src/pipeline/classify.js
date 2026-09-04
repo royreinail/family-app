@@ -5,6 +5,26 @@
 // into human copy / calendar payloads.
 import { hexToColorId, DEFAULT_COLOR_ID } from '../integrations/googleColors.js';
 import { ACTIVITY_CATEGORIES } from '../integrations/activityCategories.js';
+import { isReauthRequiredError } from '../integrations/calendar.js';
+
+// Real gap caught live (a family's dead refresh token, GaxiosError
+// invalid_grant — Google's OAuth consent screen is still in "Testing"
+// status, which expires unused tokens): dashboard.js already tells a dead
+// connection ("reconnect it") apart from a transient hiccup ("try again"),
+// but every calendar-touching reply on the WhatsApp side used the same
+// generic "try again in a bit" for both — actively misleading for
+// invalid_grant, since retrying can never succeed until the family
+// reconnects. One shared reply for every calendar failure path in
+// pipeline.js, so this distinction is made exactly once, not
+// reimplemented (or missed) per call site.
+export function calendarErrorReply(err, { action = 'check' } = {}) {
+  if (isReauthRequiredError(err)) {
+    return "Your Google Calendar connection expired — reconnect it from Settings, then try again.";
+  }
+  return action === 'write'
+    ? "Couldn't add that to the calendar just now — try again in a bit."
+    : "Couldn't check the calendar just now — try again in a bit.";
+}
 
 // Matches a free-text string against real family members. Anything short
 // of exactly one confident match — nobody named, several people named, no
@@ -264,7 +284,10 @@ export function formatAdditionalEventsNote(items) {
   if (!items?.length) return '';
   const lines = items.map(({ status, candidate }) => {
     const when = formatDateTime(candidate.date, candidate.time);
-    const suffix = status === 'needs_time' ? ' — needs a time (added as a task)' : ' — added ✅';
+    // 'failed' — a real Calendar write error for this one item specifically
+    // (see pipeline.js's writeAdditionalEvent) — still named here rather
+    // than silently missing from the list, same reasoning as 'needs_time'.
+    const suffix = status === 'needs_time' ? ' — needs a time (added as a task)' : status === 'failed' ? " — couldn't add it, try resending just that one" : ' — added ✅';
     return `• ${candidate.title || 'Event'}${when ? `, ${when}` : ''}${personNote(candidate)}${suffix}`;
   });
   return `Also found ${items.length} more in that message:\n${lines.join('\n')}`;

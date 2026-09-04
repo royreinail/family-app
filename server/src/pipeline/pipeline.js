@@ -44,6 +44,7 @@ import {
   formatRulesList,
   findConflicts,
   formatConflictNote,
+  calendarErrorReply,
 } from './classify.js';
 import { scheduleReminder } from './reminders.js';
 import { adoptUntrackedEvents } from './eventAdoption.js';
@@ -291,7 +292,22 @@ export async function handleIncomingMessage(message, deps) {
       }
     }
 
-    const eventRef = await calendar.createEvent(payload);
+    // Real gap caught live (a dead Google refresh token, GaxiosError
+    // invalid_grant): this call had NO error handling at all — an
+    // uncaught throw here propagated all the way to webhook.js's own
+    // outermost try/catch, which only logs it, so the sender got ZERO
+    // reply. Worse than every other calendar-touching path in this file,
+    // which already at least sends something — fixed to match them, and
+    // to distinguish a dead connection (calendarErrorReply's reauth
+    // message, actionable) from a transient hiccup (generic retry).
+    let eventRef;
+    try {
+      eventRef = await calendar.createEvent(payload);
+    } catch (err) {
+      await extractionLogRepo.updateState(log.id, { state: 'failed', error: String(err?.message || err) }, pool);
+      await messenger.send(senderIdentifier, calendarErrorReply(err, { action: 'write' }));
+      return { outcome: 'failed', error: err, log };
+    }
     await extractionLogRepo.updateState(
       log.id,
       { state: 'written', resultingEventRef: eventRef, firedRule: firedRuleName },
@@ -422,8 +438,17 @@ async function writeAdditionalEvent(extra, { familyId, familyMembers, timeZone, 
   candidate = overrideExplicitAudienceKeyword(text, candidate);
   candidate = applyForwardedSenderDefault(candidate, { wasForwarded, senderFamilyMember, familyMembers });
   if (candidate.time) {
-    const ref = await calendar.createEvent(calendarPayloadFromCandidate(candidate, { familyMembers, timeZone, sourceText: text }));
-    return { status: 'written', candidate, ref };
+    // Same reasoning as the primary item's own write: never let a real
+    // Calendar failure vanish silently — A3's whole point is not losing
+    // items from a multi-event message, and an uncaught throw here would
+    // have quietly dropped this one from the "+N more" note entirely.
+    try {
+      const ref = await calendar.createEvent(calendarPayloadFromCandidate(candidate, { familyMembers, timeZone, sourceText: text }));
+      return { status: 'written', candidate, ref };
+    } catch (err) {
+      console.error(`Failed to write additional event "${candidate.title}"`, err);
+      return { status: 'failed', candidate };
+    }
   }
   const task = await tasksRepo.create(
     { familyId, title: candidate.title || 'Untitled task', dueDate: candidate.date, sourceExtractionLogId: log.id },
@@ -463,7 +488,7 @@ async function handleReadBackQuery({ log, candidate, calendar, messenger, sender
     items = await adoptUntrackedEvents(items, { familyId, familyMembers, updateEvent: calendar.updateEvent, pool });
   } catch (err) {
     await extractionLogRepo.updateState(log.id, { state: 'failed', error: String(err?.message || err) }, pool);
-    await messenger.send(senderIdentifier, "Couldn't check the calendar just now — try again in a bit.");
+    await messenger.send(senderIdentifier, calendarErrorReply(err));
     return { outcome: 'failed', error: err, log };
   }
 
@@ -533,7 +558,7 @@ async function handleManagementRequest({ log, candidate, calendar, messenger, se
     items = await adoptUntrackedEvents(items, { familyId, familyMembers, updateEvent: calendar.updateEvent, pool });
   } catch (err) {
     await extractionLogRepo.updateState(log.id, { state: 'failed', error: String(err?.message || err) }, pool);
-    await messenger.send(senderIdentifier, "Couldn't check the calendar just now — try again in a bit.");
+    await messenger.send(senderIdentifier, calendarErrorReply(err));
     return { outcome: 'failed', error: err, log };
   }
 
@@ -838,7 +863,6 @@ async function promotePendingEventWithTime({ log, pending, newTime, newEndTime =
   const candidate = { ...pending.ai_candidate, time: newTime, end_time: newEndTime };
 
   const parkedTask = await tasksRepo.findBySourceExtractionLogId(pending.id, pool);
-  if (parkedTask) await tasksRepo.softDelete(parkedTask.id, pool);
 
   // B4 — the ORIGINAL message that started this parked event (pending's
   // own raw_input), not the short follow-up answer ("8:30") that merely
@@ -863,7 +887,24 @@ async function promotePendingEventWithTime({ log, pending, newTime, newEndTime =
     }
   }
 
-  const eventRef = await calendar.createEvent(payload);
+  // Real gap caught live (a dead Google refresh token, GaxiosError
+  // invalid_grant): no error handling existed here at all — an uncaught
+  // throw meant total silence for the sender AND (a real secondary bug
+  // this surfaced) the parked task had already been deleted above before
+  // this ever ran, so a failed promotion used to lose the tentative
+  // placeholder entirely, not just fail to complete it. Fixed both: the
+  // task delete now happens only after a confirmed successful create, and
+  // a failure here gets the same honest reply (reauth vs. transient) every
+  // other calendar-touching path in this file already gives.
+  let eventRef;
+  try {
+    eventRef = await calendar.createEvent(payload);
+  } catch (err) {
+    await extractionLogRepo.updateState(log.id, { state: 'failed', error: String(err?.message || err) }, pool);
+    await messenger.send(senderIdentifier, calendarErrorReply(err, { action: 'write' }));
+    return { outcome: 'failed', error: err, log };
+  }
+  if (parkedTask) await tasksRepo.softDelete(parkedTask.id, pool);
 
   await extractionLogRepo.updateState(
     pending.id,

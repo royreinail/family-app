@@ -1,8 +1,11 @@
-// E1 (voice notes as input) — resolveAudioMediaRef is the pure recognition
-// step, extracted for real test coverage the same way resolveImageMediaRef
-// already is (item 2's precedent): the actual WhatsApp download and
-// transcription calls it feeds into aren't unit-tested, same as every other
-// real integration call in this codebase.
+// E1 (voice notes as input, SHELVED — no transcription path exists;
+// see webhook.js's own comment for why) — resolveAudioMediaRef is still
+// what recognizes a voice note so it gets its own honest decline reply
+// instead of being lumped into the generic "unsupported type" message.
+// Extracted for real test coverage the same way resolveImageMediaRef
+// already is (item 2's precedent): the actual WhatsApp API call it feeds
+// into isn't unit-tested, same as every other real integration call in
+// this codebase.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 

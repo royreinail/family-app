@@ -1128,26 +1128,27 @@ so `CREATE TABLE IF NOT EXISTS` alone would have been a silent no-op on the real
 first `prep_association` row written in production would have hit a constraint violation; caught
 before shipping, not after). `tests/regression/prepAwareness.test.js` (4 tests).
 
-**E1 — Voice notes as input (⚠️ built, needs a real credential Roy must add).** Self-contained per the
-backlog: transcribe once, then hand the resulting text to the extraction pipeline completely
-unchanged — a voice note becomes exactly the same code path a typed message already is, the same way
-an image's caption already works. `webhook.js`'s new `resolveAudioMediaRef` recognizes WhatsApp's
-`'audio'` message type (covers both a recorded voice note and a regular shared audio file — Meta's own
-`voice` flag doesn't need different handling here); the audio bytes download through the *existing*
-`messengerIntegration.downloadMedia` (already fully generic, not image-specific) and are handed to a
-new `integrations/transcription.js`. **Real, live gap, not a silent one:** Anthropic's own Messages API
-has no audio-input content type (only text/image/PDF as of this writing), so this can't reuse
-`ANTHROPIC_API_KEY` the way image capture reuses it for vision — `transcription.js` calls OpenAI's
-Whisper endpoint instead, the standard choice for this, gated behind its own `OPENAI_API_KEY`, which is
-**not currently set on this deployment**. Until it is, `transcribe()` throws a clear, typed error
-instead of attempting a doomed call, and `webhook.js` catches that and sends an honest "I can't
-understand voice notes yet — mind typing that instead?" reply — never silence, same philosophy as
-every other "nothing usable" case already handled there. The moment Roy adds a real `OPENAI_API_KEY`
-Railway variable, voice notes start working with no further code change needed. Adding that credential
-is outside what this pass could do on its own (the explicit prohibited-action rule against creating
-accounts/entering credentials — see this session's own earlier WhatsApp-template-submission precedent).
-`tests/regression/voiceMessageType.test.js` (3 tests) covers `resolveAudioMediaRef` directly, the same
-pure-recognition-function convention `resolveImageMediaRef` already established.
+**E1 — Voice notes as input (⏸️ shelved — Roy's call).** Real, verified reason a second AI vendor was
+ever on the table at all: Anthropic's own Messages API has no audio-input content type (only
+text/image/PDF as of this writing, confirmed directly against the current API reference and vision
+docs, not assumed — an audio content block is an open, unresolved feature request on Anthropic's own
+SDK repo), so transcription can't reuse `ANTHROPIC_API_KEY` the way image capture reuses it for vision.
+The only viable path was a second, separate vendor (OpenAI's Whisper) for the transcription step alone,
+with the resulting plain text still flowing into the *same* Anthropic-powered extraction pipeline
+unchanged. **Roy's explicit call: not forking AI vendor support onto a second provider for this one
+feature** — shelved rather than left half-built waiting on a credential. `integrations/transcription.js`
+(the OpenAI Whisper call) was removed entirely, not just left unconfigured — no `OPENAI_API_KEY`
+reference, no second-vendor fetch call anywhere in the codebase.
+
+What's kept: `webhook.js`'s `resolveAudioMediaRef` still recognizes WhatsApp's `'audio'` message type
+(a recorded voice note and a regular shared audio file both arrive as the same type — Meta's own
+`voice` flag doesn't need different handling here) and declines it with its own honest reply, "I can't
+understand voice notes yet — mind typing that instead?" — never silently dropped or lumped into the
+generic "unsupported message type" message, same "every message gets some response" philosophy as
+everywhere else in this handler. `tests/regression/voiceMessageType.test.js` (3 tests) covers
+`resolveAudioMediaRef` directly, the same pure-recognition-function convention `resolveImageMediaRef`
+already established. Revisit if Anthropic's own API ever adds audio input (no separate vendor needed
+at that point) or if a second AI vendor becomes worth it for its own sake later.
 
 **Full suite after all nine items above: 164/164 passing.** Frontend untouched throughout — every one
 of these is a WhatsApp-only or purely-internal capability, matching how every bot-facing feature in
