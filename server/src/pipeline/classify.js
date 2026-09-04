@@ -472,6 +472,51 @@ export function todayInTimeZone(timeZone = 'UTC') {
   return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
 
+// D1 — the family's current local wall-clock time as "HH:MM" (24h,
+// zero-padded so it lexicographically compares correctly against a
+// standing rule's own "HH:MM" param_value), same double-formatting-via-Intl
+// approach as todayInTimeZone just above, no timezone library needed.
+export function nowTimeInTimeZone(timeZone = 'UTC') {
+  return new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
+}
+
+// D1 — pure decision of whether a family's daily briefing should fire on
+// this sweep tick. Never sent yet today (by the family's own local date)
+// AND the local clock has reached (not necessarily exactly equals) the
+// configured send time — a periodic sweep (pipeline/briefing.js, same
+// every-60s cadence as the existing reminder sweep) can't guarantee landing
+// on the exact target minute, so this fires on the first tick at or after
+// it; `lastSentDateLocal` (updated the moment it does fire) is what
+// actually prevents re-sending for the rest of that day.
+export function shouldSendBriefingNow({ nowLocalHHMM, sendTime, lastSentDateLocal, todayLocal }) {
+  if (lastSentDateLocal === todayLocal) return false;
+  return nowLocalHHMM >= sendTime;
+}
+
+// D1 (D-4's exact scope) — "each parent receives their own items plus
+// anything involving the kids." An event matched to nobody in particular
+// (matchMembersToEvent finds no one) is shown to every parent too — the
+// same "never silently hide, when in doubt show it" default already
+// established elsewhere in this codebase (shouldShowOnKidBoard's own
+// reasoning): better an unassigned family event appears in both parents'
+// briefings than in neither. What's actually excluded is narrow and
+// deliberate — an event matched ONLY to the *other* parent (their own
+// personal appointment; no kid, and not this parent, involved at all).
+export function isRelevantToParent(item, parentMemberId, familyMembers) {
+  const matched = matchMembersToEvent(item, familyMembers);
+  if (!matched.length) return true;
+  if (matched.some((m) => m.id === parentMemberId)) return true;
+  if (matched.some((m) => !m.is_parent)) return true;
+  return false;
+}
+
+// D1 — same one-line-per-event convention as formatQueryReply's own
+// formatEventLine (reused directly, not duplicated).
+export function formatBriefingReply(events, { dateLabel } = {}) {
+  if (!events.length) return `Nothing on the calendar for tomorrow (${dateLabel}).`;
+  return `Here's tomorrow (${dateLabel}):\n${events.map(formatEventLine).join('\n')}`;
+}
+
 export function addDays(dateStr, days) {
   const [year, month, day] = dateStr.split('-').map(Number);
   const d = new Date(Date.UTC(year, month - 1, day));

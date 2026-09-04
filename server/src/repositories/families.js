@@ -19,6 +19,24 @@ export async function updateTimezone(id, timezone, pool = getPool()) {
   return rows[0];
 }
 
+// D1 — every family the daily briefing sweep should consider. Realistic
+// scale is one family (personal-use app), but the sweep is written to
+// iterate a real set rather than assume exactly one row.
+export async function findAllActive(pool = getPool()) {
+  const { rows } = await pool.query(`select * from families where deleted_at is null`);
+  return rows;
+}
+
+// D1 — records that today's briefing already went out, so the sweep's next
+// tick (same day) skips this family instead of resending.
+export async function markBriefingSent(id, dateStr, pool = getPool()) {
+  const { rows } = await pool.query(
+    `update families set last_briefing_sent_date = $2 where id = $1 returning *`,
+    [id, dateStr]
+  );
+  return rows[0];
+}
+
 export async function setPin(id, pin, pool = getPool()) {
   const pinHash = bcrypt.hashSync(pin, 10);
   const { rows } = await pool.query(`update families set pin_hash = $2 where id = $1 returning *`, [id, pinHash]);

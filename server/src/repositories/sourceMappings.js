@@ -19,6 +19,20 @@ export async function create({ familyId, channelType, externalIdentifier, family
   return rows[0];
 }
 
+// D1 (proactive daily briefing) — the reverse direction of findByIdentifier:
+// given a family member (a parent), what WhatsApp number do they actually
+// receive messages at? A parent with no mapping on file simply can't be
+// briefed — the sweep skips them rather than guessing a number.
+export async function findByFamilyMemberId({ familyId, channelType, familyMemberId }, pool = getPool()) {
+  const { rows } = await pool.query(
+    `select * from source_mappings
+     where family_id = $1 and channel_type = $2 and family_member_id = $3 and deleted_at is null
+     limit 1`,
+    [familyId, channelType, familyMemberId]
+  );
+  return rows[0] ?? null;
+}
+
 export async function findAllForFamily(familyId, pool = getPool()) {
   const { rows } = await pool.query(
     `select * from source_mappings where family_id = $1 and deleted_at is null`,

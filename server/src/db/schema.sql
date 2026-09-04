@@ -21,6 +21,12 @@ create table if not exists families (
 -- above) so this applies to already-deployed databases the same idempotent
 -- way schema.sql's other statements do -- see db/migrate.js.
 alter table families add column if not exists invite_code text unique;
+-- D1 (proactive daily briefing): the local calendar date the briefing was
+-- last sent for, so a periodic sweep (see pipeline/briefing.js) knows not
+-- to resend it every tick for the rest of that same day. A plain date, not
+-- a timestamptz — compared against the family's own local "today"
+-- (todayInTimeZone), not a UTC instant.
+alter table families add column if not exists last_briefing_sent_date date;
 
 -- Backlog 1.3 (multi-parent support): every Google account authorized to
 -- sign into a family. Kept separate from google_credentials, which stays a
