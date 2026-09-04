@@ -404,11 +404,15 @@ export function reminderConfirmReply(candidate) {
 }
 
 // A1 (read-back queries) — pulls just the HH:MM out of a real Calendar
-// event's ISO start time; an all-day event (date only, no dateTime) has no
-// specific time to show at all.
+// event's ISO start time. Real bug: an all-day event (date only, no
+// dateTime) rendered with nothing at all in that slot — a blank reads as
+// "the bot lost the time," not "this genuinely has no specific time." No
+// data was ever actually missing; say so explicitly instead of rendering
+// silence.
 function formatEventLine(item) {
-  const time = item.start?.dateTime ? ` ${item.start.dateTime.slice(11, 16)}` : '';
-  return `• ${item.summary || 'Untitled'}${time}`;
+  if (item.start?.dateTime) return `• ${item.summary || 'Untitled'} ${item.start.dateTime.slice(11, 16)}`;
+  if (item.start?.date) return `• ${item.summary || 'Untitled'} (all day)`;
+  return `• ${item.summary || 'Untitled'}`;
 }
 
 export function formatQueryReply(events, { personName, dateFrom, dateTo } = {}) {
@@ -452,7 +456,9 @@ export function matchEventsByDescription(events, { titleHint, dateHint } = {}) {
 
 function formatCandidateLine(item, index) {
   const date = (item.start?.dateTime || item.start?.date || '').slice(0, 10);
-  const time = item.start?.dateTime ? ` ${item.start.dateTime.slice(11, 16)}` : '';
+  // Same fix as formatEventLine just above, same reason: a blank here read
+  // as missing data, not "this is genuinely all day."
+  const time = item.start?.dateTime ? ` ${item.start.dateTime.slice(11, 16)}` : item.start?.date ? ' (all day)' : '';
   return `${index + 1}. ${item.summary || 'Untitled'}, ${date}${time}`;
 }
 
@@ -643,6 +649,83 @@ export function overrideObviousRelativeDate(rawInput, candidate, referenceDate) 
   if (/\btomorrow\b/.test(text)) return { ...candidate, date: addDays(referenceDate, 1) };
   if (/\btoday\b/.test(text) || /\btonight\b/.test(text)) return { ...candidate, date: referenceDate };
   return candidate;
+}
+
+// Real bug (live report): a named weekday is exactly as unambiguous as
+// "today"/"tomorrow" given a reference date, and hit the exact same class
+// of LLM date-arithmetic error the comment above already predicted
+// ("anything less clear-cut... still goes through the LLM's own
+// reasoning" — turns out weekday names weren't safe to leave there). The
+// same evening, the same bot correctly resolved a QUALIFIED weekday
+// ("יום שני הקרוב", next Monday) but got a BARE one wrong ("בשלישי",
+// Tuesday, landed one day late) — real evidence the LLM's own weekday
+// resolution isn't reliably consistent regardless of phrasing, so this
+// resolves both the same deterministic way, in both languages.
+//
+// Word-boundary matching only, never a bare substring: JS's `\b` is
+// useless for Hebrew (defined only over `[A-Za-z0-9_]`), and Hebrew's
+// weekday words genuinely overlap with ordinal numbers ("שני" = Monday OR
+// "second") — matching a fragment buried in a longer word would misfire.
+// Only ב ("on/in") and ל ("to/for") are treated as a directly-attached
+// prefix (Hebrew commonly has no space between them and the next word,
+// e.g. "בשלישי" = ב + שלישי, "on Tuesday") — deliberately NOT the wider
+// HEBREW_PREFIX_LETTERS set matchBarePersonCorrection uses elsewhere: ה
+// ("the") is excluded on purpose, since "השני" ("the second [thing]") is
+// genuine, common ordinal usage in Hebrew, not a reference to Monday, and
+// stripping it would misfire on exactly that phrasing. A bare "שני" with
+// no prefix at all is left in, since that's how "Monday" is actually said
+// in casual Hebrew speech far more often than "second" appears bare.
+const WEEKDAY_PREFIX_LETTERS = 'בל';
+const WEEKDAY_NAMES = [
+  { index: 0, words: ['ראשון', 'sunday'] },
+  { index: 1, words: ['שני', 'monday'] },
+  { index: 2, words: ['שלישי', 'tuesday'] },
+  { index: 3, words: ['רביעי', 'wednesday'] },
+  { index: 4, words: ['חמישי', 'thursday'] },
+  { index: 5, words: ['שישי', 'friday'] },
+  { index: 6, words: ['שבת', 'saturday'] },
+];
+
+function matchWeekdayWord(word) {
+  const match = WEEKDAY_NAMES.find((w) => w.words.includes(word));
+  return match ? match.index : null;
+}
+
+// Returns the 0 (Sunday) .. 6 (Saturday) weekday a message names, or null.
+// Bare ("שלישי"/"Tuesday") and qualified ("יום שני הקרוב"/"next Monday")
+// phrasing resolve identically — the qualifier changes how it reads, never
+// which weekday was actually named, so the date math doesn't need to (and
+// shouldn't have to) treat them differently.
+export function matchNamedWeekday(rawInput) {
+  const words = (rawInput || '').toLowerCase().split(/[\s,.\-–—:;!?"'()[\]]+/).filter(Boolean);
+  for (const word of words) {
+    const direct = matchWeekdayWord(word);
+    if (direct !== null) return direct;
+    if (word.length > 1 && WEEKDAY_PREFIX_LETTERS.includes(word[0])) {
+      const stripped = matchWeekdayWord(word.slice(1));
+      if (stripped !== null) return stripped;
+    }
+  }
+  return null;
+}
+
+// The calendar date of the next occurrence of `weekdayIndex` on/after
+// `referenceDate` — same "UTC as neutral scratch space" reasoning as
+// addDays/addOneHour, the result is still a plain wall-clock date. If
+// today itself IS the named weekday, that's what "what's on Tuesday"
+// asked on a Tuesday naturally means — not next week's Tuesday.
+export function resolveNamedWeekdayDate(referenceDate, weekdayIndex) {
+  const [year, month, day] = referenceDate.split('-').map(Number);
+  const todayIndex = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  const delta = (weekdayIndex - todayIndex + 7) % 7;
+  return addDays(referenceDate, delta);
+}
+
+// Capture-path counterpart to overrideObviousRelativeDate — same
+// deterministic-safety-net reasoning, now covering named weekdays too.
+export function overrideNamedWeekday(rawInput, candidate, referenceDate) {
+  const weekdayIndex = matchNamedWeekday(rawInput);
+  return weekdayIndex === null ? candidate : { ...candidate, date: resolveNamedWeekdayDate(referenceDate, weekdayIndex) };
 }
 
 // Fix: reminders firing hours off from the intended time (real bug —

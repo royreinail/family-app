@@ -15,7 +15,7 @@ import { seedFamily } from '../setup/seedFamily.js';
 import { createFakeCalendar, createFakeMessenger, createFakeLlm } from '../setup/fakes.js';
 import { handleIncomingMessage } from '../../src/pipeline/pipeline.js';
 import * as extractionLogRepo from '../../src/repositories/extractionLog.js';
-import { matchEventsByDescription, formatDisambiguationReply, formatNoMatchReply, naiveDateTimeToUtcMs, utcMsToNaiveDateTime } from '../../src/pipeline/classify.js';
+import { matchEventsByDescription, formatDisambiguationReply, formatNoMatchReply, naiveDateTimeToUtcMs, utcMsToNaiveDateTime, resolveNamedWeekdayDate, todayInTimeZone } from '../../src/pipeline/classify.js';
 import { bareDisambiguationChoice } from '../../src/pipeline/commands.js';
 
 let pool;
@@ -196,6 +196,10 @@ test('rescheduling with a given time moves the real event and preserves its orig
   const { family, knownSender } = await seedFamily(pool);
   const calendar = createFakeCalendar();
   const messenger = createFakeMessenger();
+  // classify.js's overrideNamedWeekday deterministically recomputes
+  // "Thursday" against the real current date (live bug report), so the
+  // expected date has to be computed the same way, not hardcoded.
+  const thursday = resolveNamedWeekdayDate(todayInTimeZone('UTC'), 4);
   const llm = createFakeLlm({
     'Dentist Thursday 9am-9:30am': {
       title: 'Dentist', date: '2026-09-03', time: '09:00', end_time: '09:30', person: null, category: 'appointment',
@@ -219,14 +223,15 @@ test('rescheduling with a given time moves the real event and preserves its orig
   assert.equal(result.outcome, 'managed');
   assert.match(result.reply, /Moved/);
   const [event] = [...calendar.events.values()];
-  assert.equal(event.startDateTime, '2026-09-03T17:00:00');
-  assert.equal(event.endDateTime, '2026-09-03T17:30:00', 'the original 30-minute duration must survive the move');
+  assert.equal(event.startDateTime, `${thursday}T17:00:00`);
+  assert.equal(event.endDateTime, `${thursday}T17:30:00`, 'the original 30-minute duration must survive the move');
 });
 
 test('rescheduling with no target time/date at all asks instead of silently no-op-ing', async () => {
   const { family, knownSender } = await seedFamily(pool);
   const calendar = createFakeCalendar();
   const messenger = createFakeMessenger();
+  const thursday = resolveNamedWeekdayDate(todayInTimeZone('UTC'), 4);
   const llm = createFakeLlm({
     'Dentist Thursday 9am': {
       title: 'Dentist', date: '2026-09-03', time: '09:00', person: null, category: 'appointment',
@@ -249,7 +254,7 @@ test('rescheduling with no target time/date at all asks instead of silently no-o
 
   assert.match(result.reply, /what time/i);
   const [event] = [...calendar.events.values()];
-  assert.equal(event.startDateTime, '2026-09-03T09:00:00', 'must not have silently "rescheduled" it to its own existing time');
+  assert.equal(event.startDateTime, `${thursday}T09:00:00`, 'must not have silently "rescheduled" it to its own existing time');
 });
 
 test('no matching event at all gets an honest reply, nothing touched', async () => {

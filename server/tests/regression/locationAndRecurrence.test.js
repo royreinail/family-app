@@ -80,8 +80,11 @@ test('a real capture with no location and no recurrence leaves both fields unset
   const { family, knownSender } = await seedFamily(pool);
   const calendar = createFakeCalendar();
   const messenger = createFakeMessenger();
+  // No weekday name on purpose — classify.js's overrideNamedWeekday would
+  // otherwise recompute the date against the real current date; this test
+  // is about location/recurrence staying unset, not date resolution.
   const llm = createFakeLlm({
-    'Dance class Thursday 4pm': {
+    'Dance class at 4pm': {
       title: 'Dance class', date: '2026-08-20', time: '16:00', end_time: null, person: null, category: 'activity',
       location: null, recurrence: null,
       reminder_requested: false, reminder_datetime: null, audience: 'family', activity_icon: '💃',
@@ -89,7 +92,7 @@ test('a real capture with no location and no recurrence leaves both fields unset
   });
 
   const result = await handleIncomingMessage(
-    { familyId: family.id, senderIdentifier: knownSender, text: 'Dance class Thursday 4pm', externalMessageId: 'wamid.loc2' },
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Dance class at 4pm', externalMessageId: 'wamid.loc2' },
     { pool, llmExtract: llm.extract, calendar, messenger }
   );
 

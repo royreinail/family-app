@@ -95,19 +95,21 @@ test('a pure reminder is still recognized when reminder_datetime carries trailin
   const { family, knownSender } = await seedFamily(pool);
   const calendar = createFakeCalendar();
   const messenger = createFakeMessenger();
-  // Deliberately no "tomorrow"/"today" in the text — overrideObviousRelativeDate
-  // would recompute `date` against the real current date and silently
-  // desync it from this test's hardcoded reminder_datetime, same fragility
-  // this file's own first test already flags for exactly that reason.
+  // Deliberately no "tomorrow"/"today", and — since classify.js gained a
+  // deterministic weekday override too (a named weekday gets the exact
+  // same recompute-against-the-real-current-date treatment) — deliberately
+  // no weekday name either, for the identical reason: any of those would
+  // recompute `date` against the real current date and silently desync it
+  // from this test's hardcoded reminder_datetime.
   const llm = createFakeLlm({
-    'Remind me to call the dentist Thursday at 9am': {
+    'Remind me to call the dentist at 9am': {
       title: 'call the dentist', date: '2026-08-29', time: '09:00', person: null, category: null,
       reminder_requested: true, reminder_datetime: '2026-08-29T09:00:00.000Z',
     },
   });
 
   const result = await handleIncomingMessage(
-    { familyId: family.id, senderIdentifier: knownSender, text: 'Remind me to call the dentist Thursday at 9am', externalMessageId: 'wamid.reminder-routing-3' },
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Remind me to call the dentist at 9am', externalMessageId: 'wamid.reminder-routing-3' },
     { pool, llmExtract: llm.extract, calendar, messenger }
   );
 

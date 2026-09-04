@@ -86,14 +86,19 @@ test('a capture for an unmatched/unknown person skips the conflict check silentl
   const { family, knownSender } = await seedFamily(pool);
   const calendar = createFakeCalendar();
   const messenger = createFakeMessenger();
+  // No weekday name in the text on purpose (same reasoning as
+  // reminderRouting.test.js's own fixtures) — classify.js's
+  // overrideNamedWeekday would otherwise recompute the date against the
+  // real current date and desync it from this hardcoded fixture; this test
+  // is about the conflict check being skipped, not date resolution.
   const llm = createFakeLlm({
-    'Dance class Thursday 4pm': {
+    'Dance class at 4pm': {
       title: 'Dance class', date: '2026-08-20', time: '16:00', end_time: null, person: null, category: 'activity',
       location: null, recurrence: null, reminder_requested: false, reminder_datetime: null, audience: 'family', activity_icon: '💃',
     },
   });
   const result = await handleIncomingMessage(
-    { familyId: family.id, senderIdentifier: knownSender, text: 'Dance class Thursday 4pm', externalMessageId: 'wamid.cp3' },
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Dance class at 4pm', externalMessageId: 'wamid.cp3' },
     { pool, llmExtract: llm.extract, calendar, messenger, familyMembers: [] }
   );
   assert.equal(result.reply, 'Dance class, 2026-08-20 16:00 — added ✅');

@@ -27,6 +27,7 @@ import * as extractionLogRepo from '../../src/repositories/extractionLog.js';
 import * as tasksRepo from '../../src/repositories/tasks.js';
 import { hexToColorId } from '../../src/integrations/googleColors.js';
 import { isBareTimeAnswer, parseCorrectedTimeRange } from '../../src/pipeline/commands.js';
+import { resolveNamedWeekdayDate, todayInTimeZone } from '../../src/pipeline/classify.js';
 
 let pool;
 
@@ -37,13 +38,21 @@ beforeEach(() => {
 
 const HEBREW_FIRST_TURN = 'יום שני הקרוב טיפול באומנות לגאיה';
 
+// classify.js's overrideNamedWeekday deterministically recomputes "יום שני"
+// (Monday) against the real current date (live bug report — the same
+// weekday this test's own comment names as the one the LLM DID resolve
+// correctly, in the report's own live reproduction), so the expected date
+// has to be computed the same way here, not hardcoded to whatever date
+// happened to be "next Monday" when this test was originally written.
+const NEXT_MONDAY = resolveNamedWeekdayDate(todayInTimeZone('Asia/Jerusalem'), 1);
+
 // What the LLM returns for that first turn: title + person resolved, the
 // relative date ("this coming Monday") already turned into a concrete
 // date, and no time — the exact shape that triggers the "What time?" ask.
 function firstTurnExtraction() {
   return {
     title: 'טיפול באומנות',
-    date: '2026-08-31',
+    date: NEXT_MONDAY,
     time: null,
     person: 'גאיה',
     category: 'activity',
@@ -88,13 +97,13 @@ test('a bare "8:30" reply to "What time?" is merged into the parked event, not r
   assert.equal(calendar.events.size, 1);
   const written = [...calendar.events.values()][0];
   assert.equal(written.title, 'טיפול באומנות', 'original title kept, not lost to <UNKNOWN>');
-  assert.equal(written.startDateTime, '2026-08-31T08:30:00', 'already-resolved date kept, time filled in');
-  assert.equal(written.endDateTime, '2026-08-31T09:30:00');
+  assert.equal(written.startDateTime, `${NEXT_MONDAY}T08:30:00`, 'already-resolved date kept, time filled in');
+  assert.equal(written.endDateTime, `${NEXT_MONDAY}T09:30:00`);
   assert.equal(written.colorId, hexToColorId('#d60000'), "kept the person, so the event carries גאיה's colour");
 
   // The confirmation the user actually sees.
   assert.match(messenger.sent.at(-1).text, /טיפול באומנות/);
-  assert.match(messenger.sent.at(-1).text, /2026-08-31 08:30/);
+  assert.match(messenger.sent.at(-1).text, new RegExp(`${NEXT_MONDAY} 08:30`));
   assert.doesNotMatch(messenger.sent.at(-1).text, /UNKNOWN|2026-08-27/);
 });
 
@@ -106,13 +115,13 @@ test('promoting the parked event retires its tentative task and repoints the log
 
   const first = await handleIncomingMessage(
     { familyId: family.id, senderIdentifier: knownSender, text: HEBREW_FIRST_TURN, externalMessageId: 'wamid.followup-2a' },
-    { pool, llmExtract: llm.extract, calendar, messenger, familyMembers }
+    { pool, llmExtract: llm.extract, calendar, messenger, timeZone: 'Asia/Jerusalem', familyMembers }
   );
   assert.equal((await tasksRepo.findAllForFamily(family.id, pool)).length, 1, 'date-only branch parks a tentative task');
 
   const second = await handleIncomingMessage(
     { familyId: family.id, senderIdentifier: knownSender, text: 'at 8:30am', externalMessageId: 'wamid.followup-2b' },
-    { pool, llmExtract: llm.extract, calendar, messenger, familyMembers }
+    { pool, llmExtract: llm.extract, calendar, messenger, timeZone: 'Asia/Jerusalem', familyMembers }
   );
   assert.equal(second.outcome, 'written');
 
@@ -137,7 +146,7 @@ test('a quote-reply of a time to "What time?" promotes the same way (correction 
 
   const first = await handleIncomingMessage(
     { familyId: family.id, senderIdentifier: knownSender, text: HEBREW_FIRST_TURN, externalMessageId: 'wamid.followup-3a' },
-    { pool, llmExtract: llm.extract, calendar, messenger, familyMembers }
+    { pool, llmExtract: llm.extract, calendar, messenger, timeZone: 'Asia/Jerusalem', familyMembers }
   );
 
   const second = await handleIncomingMessage(
@@ -148,7 +157,7 @@ test('a quote-reply of a time to "What time?" promotes the same way (correction 
       externalMessageId: 'wamid.followup-3b',
       replyToExtractionLogId: first.log.id,
     },
-    { pool, llmExtract: llm.extract, calendar, messenger, familyMembers }
+    { pool, llmExtract: llm.extract, calendar, messenger, timeZone: 'Asia/Jerusalem', familyMembers }
   );
 
   assert.equal(second.outcome, 'written');
@@ -156,7 +165,7 @@ test('a quote-reply of a time to "What time?" promotes the same way (correction 
   assert.equal(llm.calls.length, 1);
   const written = [...calendar.events.values()][0];
   assert.equal(written.title, 'טיפול באומנות');
-  assert.equal(written.startDateTime, '2026-08-31T08:30:00');
+  assert.equal(written.startDateTime, `${NEXT_MONDAY}T08:30:00`);
 });
 
 test('a fresh request that merely contains a time is NOT swallowed as a follow-up answer', async () => {
@@ -173,13 +182,13 @@ test('a fresh request that merely contains a time is NOT swallowed as a follow-u
 
   await handleIncomingMessage(
     { familyId: family.id, senderIdentifier: knownSender, text: HEBREW_FIRST_TURN, externalMessageId: 'wamid.followup-4a' },
-    { pool, llmExtract: llm.extract, calendar, messenger, familyMembers }
+    { pool, llmExtract: llm.extract, calendar, messenger, timeZone: 'Asia/Jerusalem', familyMembers }
   );
 
   // A pending needs_time exists, but this is plainly its own new event.
   const second = await handleIncomingMessage(
     { familyId: family.id, senderIdentifier: knownSender, text: 'Dentist for גאיה next Tuesday 9am', externalMessageId: 'wamid.followup-4b' },
-    { pool, llmExtract: llm.extract, calendar, messenger, familyMembers }
+    { pool, llmExtract: llm.extract, calendar, messenger, timeZone: 'Asia/Jerusalem', familyMembers }
   );
 
   assert.equal(second.outcome, 'written');
@@ -238,7 +247,7 @@ test('a range reply to "What time?" ("8:30-18:00") keeps the real duration, not 
 
   assert.equal(second.outcome, 'written');
   const written = [...calendar.events.values()][0];
-  assert.equal(written.startDateTime, '2026-08-31T08:30:00');
-  assert.equal(written.endDateTime, '2026-08-31T18:00:00', 'the given end time, not a default 1-hour block');
+  assert.equal(written.startDateTime, `${NEXT_MONDAY}T08:30:00`);
+  assert.equal(written.endDateTime, `${NEXT_MONDAY}T18:00:00`, 'the given end time, not a default 1-hour block');
   assert.match(messenger.sent.at(-1).text, /08:30–18:00/, 'confirmation echoes the real range back');
 });

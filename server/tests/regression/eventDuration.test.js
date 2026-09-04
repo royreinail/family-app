@@ -49,15 +49,18 @@ test('no end_time given still defaults to a 1-hour block, unchanged from before'
   const { family, knownSender } = await seedFamily(pool);
   const calendar = createFakeCalendar();
   const messenger = createFakeMessenger();
+  // No weekday name on purpose — classify.js's overrideNamedWeekday would
+  // otherwise recompute the date against the real current date; this test
+  // is about duration math, not date resolution.
   const llm = createFakeLlm({
-    'Dance class Thursday 4pm': {
+    'Dance class at 4pm': {
       title: 'Dance class', date: '2026-08-20', time: '16:00', person: null, category: 'activity',
       reminder_requested: false, reminder_datetime: null,
     },
   });
 
   const result = await handleIncomingMessage(
-    { familyId: family.id, senderIdentifier: knownSender, text: 'Dance class Thursday 4pm', externalMessageId: 'wamid.duration-regression-2' },
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Dance class at 4pm', externalMessageId: 'wamid.duration-regression-2' },
     { pool, llmExtract: llm.extract, calendar, messenger }
   );
 
@@ -72,15 +75,16 @@ test('an end_time earlier than the start time rolls over to the next day (an ove
   const { family, knownSender } = await seedFamily(pool);
   const calendar = createFakeCalendar();
   const messenger = createFakeMessenger();
+  // No weekday name on purpose, same reasoning as the test just above.
   const llm = createFakeLlm({
-    'Sleepover 9pm to 1am Friday': {
+    'Sleepover 9pm to 1am': {
       title: 'Sleepover', date: '2026-08-21', time: '21:00', end_time: '01:00',
       person: null, category: null, reminder_requested: false, reminder_datetime: null,
     },
   });
 
   const result = await handleIncomingMessage(
-    { familyId: family.id, senderIdentifier: knownSender, text: 'Sleepover 9pm to 1am Friday', externalMessageId: 'wamid.duration-regression-3' },
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Sleepover 9pm to 1am', externalMessageId: 'wamid.duration-regression-3' },
     { pool, llmExtract: llm.extract, calendar, messenger }
   );
 

@@ -24,7 +24,14 @@ const QUERY_TOOL = {
       date_to: { type: 'string', description: 'ISO 8601 date — last day of the range. Same as date_from for a single day ("what\'s on tomorrow"); a real range for "this week"/"עד יום שישי" etc.' },
       person: {
         type: ['string', 'null'],
-        description: 'Set only when the question is explicitly scoped to one person ("what does Gaia have Tuesday?", "מה יש לגאיה ביום שלישי?") — their name, matched the same way record_extraction\'s `person` is. null for a general, family-wide question ("what\'s on tomorrow?").',
+        // Real bug (live report, D-1's own audience-filter decision never
+        // actually firing): this originally only ever described a NAMED
+        // third party ("what does Gaia have"). A self-referential question
+        // ("what do I have?", "מה יש לי?") is scoped exactly as explicitly
+        // as a named one — the sender's own name (given below, when
+        // known) resolves it the same deterministic way a named person
+        // already does, rather than falling through to null/unscoped.
+        description: 'Set whenever the question is scoped to one specific person\'s events — either a named third party ("what does Gaia have Tuesday?", "מה יש לגאיה ביום שלישי?") OR the sender asking about themselves ("what do I have?", "מה יש לי?", "my schedule") — in the self-referential case, set this to the SENDER\'S OWN name (see "Message sender" below), not left null. null only for a genuinely general, family-wide question ("what\'s on tomorrow?") that names no one and isn\'t self-referential.',
       },
     },
     required: ['date_from', 'date_to', 'person'],
@@ -261,20 +268,42 @@ as reminder_requested — null for a one-time event, which is the default assump
 // reasoning as dashboard.js's real Calendar API calls) since this part is
 // pure and worth covering directly: it's the actual fix for a real bug
 // (family member names never reaching the LLM at all).
-export function buildSystemPrompt(familyMemberNames) {
+//
+// `senderName` (live bug report, D-1's audience filter never actually
+// firing): the model has no way to resolve "what do I have?"/"מה יש לי?"
+// to a specific person unless it's told who's actually sending the
+// message — nothing else in this prompt carries that signal at all.
+// Deterministic Hebrew regex heuristics for "self-reference" were
+// considered and rejected: Hebrew's short prepositions ("לי") are exactly
+// the kind of thing that also appears as a substring INSIDE unrelated
+// words ("לילדים", "for the kids"), which is precisely the false-positive
+// risk this codebase's other Hebrew matching functions go out of their way
+// to avoid (see matchBarePersonCorrection's own whole-word handling) — the
+// LLM's actual language understanding is the right tool for this, same as
+// every other genuine natural-language judgment call in this prompt
+// (reminder_requested, audience). No-op when the sender isn't a known
+// family member (e.g. no phone-number mapping yet) — nothing to resolve to.
+export function buildSystemPrompt(familyMemberNames, senderName) {
   if (!familyMemberNames?.length) return SYSTEM_PROMPT;
+  const senderLine = senderName
+    ? `\n\nMessage sender: ${senderName}. When the sender refers to themselves ("me", "I", "my", Hebrew
+"לי"/"שלי"/"אני", or similar in any language), resolve that to their own name, ${senderName}, exactly
+as listed below — the same way a named third party would be resolved. This applies to \`person\` in
+every tool (record_extraction, record_query, record_management) wherever the message is about the
+sender themselves.`
+    : '';
   return `${SYSTEM_PROMPT}
 
 Known family members: ${familyMemberNames.join(', ')}. If the message clearly refers to one of
 them (in any language — a name doesn't change across languages), set \`person\` to their exact
 name as listed here, not however it happened to appear in the message. When \`person\` already
 captures who the event is for, keep \`title\` focused on the activity itself rather than repeating
-their name in it (e.g. prefer "Shopping" over "Shopping with Shai" when person is "Shai").`;
+their name in it (e.g. prefer "Shopping" over "Shopping with Shai" when person is "Shai").${senderLine}`;
 }
 
 /**
  * @param {string} rawInput - message text, or a caption/empty string when `opts.image` is set
- * @param {{referenceDate?: string, model?: string, image?: {base64: string, mimeType: string}, familyMemberNames?: string[]}} [opts]
+ * @param {{referenceDate?: string, model?: string, image?: {base64: string, mimeType: string}, familyMemberNames?: string[], senderName?: string}} [opts]
  * @returns {Promise<{type:'capture',title:string|null,date:string|null,time:string|null,end_time:string|null,person:string|null,category:string|null,location:string|null,recurrence:string|null,reminder_requested:boolean,reminder_datetime:string|null,audience:'family'|'parent_only',activity_icon:string,additional_events:object[]} | {type:'query',date_from:string,date_to:string,person:string|null} | {type:'management',management_action:'cancel'|'reschedule',event_description:string,date_hint:string|null,new_date:string|null,new_time:string|null} | {type:'rule',rule_text:string,rule_kind:'event_default'|'timing_param'|'prep_association',field:string|null,match_keyword:string|null,value:string|null,param_name:string|null,param_value:string|null}>}
  *   `type` distinguishes a capture (create something) from a read-back
  *   query (A1), a cancel/reschedule request (A2), or a standing-rule
@@ -308,7 +337,7 @@ export async function extract(rawInput, opts = {}) {
     body: JSON.stringify({
       model,
       max_tokens: 512,
-      system: buildSystemPrompt(opts.familyMemberNames),
+      system: buildSystemPrompt(opts.familyMemberNames, opts.senderName),
       messages: [{ role: 'user', content }],
       tools: [EXTRACTION_TOOL, QUERY_TOOL, MANAGEMENT_TOOL, RULE_TOOL],
       // 'any' (not 'tool'/name-forced, not 'auto') — forces exactly one

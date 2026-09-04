@@ -13,6 +13,7 @@ import { createFakeCalendar, createFakeMessenger, createFakeLlm } from '../setup
 import { handleIncomingMessage } from '../../src/pipeline/pipeline.js';
 import * as extractionLogRepo from '../../src/repositories/extractionLog.js';
 import * as tasksRepo from '../../src/repositories/tasks.js';
+import { resolveNamedWeekdayDate, todayInTimeZone } from '../../src/pipeline/classify.js';
 
 // Fresh in-memory DB per test — source_mappings enforces a global unique
 // (channel_type, external_identifier), which is correct for the real app
@@ -64,9 +65,14 @@ test('2. date, no time (todo-shaped) -> written to tasks tentative + qualify rep
   const { family, knownSender } = await seedFamily(pool);
   const calendar = createFakeCalendar();
   const messenger = createFakeMessenger();
+  // classify.js's overrideNamedWeekday deterministically recomputes "Friday"
+  // against the real current date (live bug report — the LLM's own weekday
+  // arithmetic wasn't reliable), so the expected date has to be computed
+  // the same way, not hardcoded, to stay correct on every future run.
+  const friday = resolveNamedWeekdayDate(todayInTimeZone('UTC'), 5);
   const llm = createFakeLlm({
     'Bring $10 for the field trip by Friday': {
-      title: 'Bring $10 for the field trip', date: '2026-08-21', time: null, person: null, category: 'todo',
+      title: 'Bring $10 for the field trip', date: friday, time: null, person: null, category: 'todo',
       reminder_requested: false, reminder_datetime: null,
     },
   });
@@ -82,7 +88,7 @@ test('2. date, no time (todo-shaped) -> written to tasks tentative + qualify rep
   assert.equal(calendar.events.size, 0);
   const tasks = await tasksRepo.findAllForFamily(family.id, pool);
   assert.equal(tasks.length, 1);
-  assert.equal(tasks[0].due_date.toISOString().slice(0, 10), '2026-08-21');
+  assert.equal(tasks[0].due_date.toISOString().slice(0, 10), friday);
   assert.equal(messenger.sent.length, 1);
   assert.match(messenger.sent[0].text, /what time/i);
 });
@@ -173,9 +179,10 @@ test('6. reply-correction ("no, 5pm") edits the linked event via extraction_log.
   const { family, knownSender } = await seedFamily(pool);
   const calendar = createFakeCalendar();
   const messenger = createFakeMessenger();
+  const tuesday = resolveNamedWeekdayDate(todayInTimeZone('UTC'), 2);
   const llm = createFakeLlm({
     'Dentist Tuesday 4pm': {
-      title: 'Dentist', date: '2026-08-25', time: '16:00', person: null, category: 'appointment',
+      title: 'Dentist', date: tuesday, time: '16:00', person: null, category: 'appointment',
       reminder_requested: false, reminder_datetime: null,
     },
   });
@@ -208,7 +215,7 @@ test('6. reply-correction ("no, 5pm") edits the linked event via extraction_log.
   // createEvent stores directly — one consistent internal shape for every
   // field the fake tracks (see fakes.js), not two depending on how the
   // event was last written.
-  assert.equal(calendar.events.get(eventId).startDateTime, '2026-08-25T17:00:00');
+  assert.equal(calendar.events.get(eventId).startDateTime, `${tuesday}T17:00:00`);
 });
 
 test('7. explicit reminder ask -> confirms the write AND schedules a reminder at reminder_datetime', async () => {

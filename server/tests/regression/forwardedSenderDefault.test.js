@@ -296,15 +296,19 @@ test('a quoted reply that matches neither a time nor a real family member gets a
   const { family, knownSender } = await seedFamily(pool);
   const calendar = createFakeCalendar();
   const messenger = createFakeMessenger();
+  // No weekday name on purpose — classify.js's overrideNamedWeekday would
+  // otherwise recompute the date against the real current date; this test
+  // only needs the original event's date to stay internally consistent
+  // (untouched by the failed correction), not any particular value.
   const llm = createFakeLlm({
-    'Birthday party Sunday 4pm': {
+    'Birthday party at 4pm': {
       title: 'Birthday party', date: '2026-08-30', time: '16:00', person: null, category: 'birthday',
       reminder_requested: false, reminder_datetime: null,
     },
   });
 
   const first = await handleIncomingMessage(
-    { familyId: family.id, senderIdentifier: knownSender, text: 'Birthday party Sunday 4pm', externalMessageId: 'wamid.fwd-9c' },
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Birthday party at 4pm', externalMessageId: 'wamid.fwd-9c' },
     { pool, llmExtract: llm.extract, calendar, messenger, familyMembers: [] }
   );
 

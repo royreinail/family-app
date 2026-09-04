@@ -24,6 +24,9 @@ import {
   utcMsToNaiveDateTime,
   todayInTimeZone,
   overrideObviousRelativeDate,
+  overrideNamedWeekday,
+  matchNamedWeekday,
+  resolveNamedWeekdayDate,
   overrideExplicitAudienceKeyword,
   applyForwardedSenderDefault,
   matchBarePersonCorrection,
@@ -212,13 +215,13 @@ export async function handleIncomingMessage(message, deps) {
   // forwarded-sender default, assessment rules, a write) — none of those
   // make sense for "tell me what's already there."
   if (candidate.type === 'query') {
-    return handleReadBackQuery({ log, candidate, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers, familyId, calendarConnected });
+    return handleReadBackQuery({ log, candidate, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers, familyId, calendarConnected, text });
   }
   // A2 — same reasoning: "cancel dance class Thursday" is a fundamentally
   // different shape from a capture, branches off before the capture-only
   // steps for the same reason.
   if (candidate.type === 'management') {
-    return handleManagementRequest({ log, candidate, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers, familyId, calendarConnected });
+    return handleManagementRequest({ log, candidate, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers, familyId, calendarConnected, text });
   }
   // C1 — "art therapy is always at the Rothschild clinic" is neither a
   // create/query/manage request; branches off the same way, before any of
@@ -247,6 +250,11 @@ export async function handleIncomingMessage(message, deps) {
   // Applies (and can fill in a date the LLM missed) whenever the raw text
   // says one of those words, independent of what the LLM itself returned.
   candidate = overrideObviousRelativeDate(text, candidate, todayInTimeZone(timeZone));
+  // Live bug report — the LLM's own weekday-name resolution isn't reliably
+  // consistent (correctly resolved a qualified weekday, "יום שני הקרוב",
+  // but got a bare one, "בשלישי", wrong the same evening); same
+  // deterministic-safety-net treatment as today/tomorrow just above.
+  candidate = overrideNamedWeekday(text, candidate, todayInTimeZone(timeZone));
   // Backlog 4.3 — an explicit "just us parents"-style phrase always wins
   // over the LLM's own audience read; see classify.js for why there's no
   // opposite override (default is already 'family').
@@ -468,11 +476,23 @@ async function writeAdditionalEvent(extra, { familyId, familyMembers, timeZone, 
 // personId-first/text-match-fallback logic the dashboard's own card
 // coloring already relies on (matchMembersToEvent) — one shared notion of
 // "whose event is this" everywhere it's asked, not a third guess.
-async function handleReadBackQuery({ log, candidate, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers, familyId, calendarConnected }) {
+async function handleReadBackQuery({ log, candidate, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers, familyId, calendarConnected, text }) {
   if (!calendarConnected) {
     await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
     await messenger.send(senderIdentifier, "Google Calendar isn't connected yet — connect it from Settings first.");
     return { outcome: 'query_failed', log };
+  }
+
+  // Live bug report — same deterministic weekday safety net as the capture
+  // path (see classify.js's overrideNamedWeekday), applied here too: a
+  // named weekday resolves the same way whether the message is a create
+  // ("dance class Tuesday") or a question ("what's on Tuesday"). Both
+  // date_from and date_to get the same computed date — a query naming one
+  // specific weekday is always a single-day question, never a range.
+  const namedWeekday = matchNamedWeekday(text);
+  if (namedWeekday !== null) {
+    const resolved = resolveNamedWeekdayDate(todayInTimeZone(timeZone), namedWeekday);
+    candidate = { ...candidate, date_from: resolved, date_to: resolved };
   }
 
   const timeMin = localDateTimeToUtcIso(candidate.date_from, '00:00', timeZone);
@@ -515,14 +535,27 @@ async function handleReadBackQuery({ log, candidate, calendar, messenger, sender
 // controls what the *kid dashboard* shows, not what a parent can manage
 // through the bot — a parent_only event must still be cancellable/
 // reschedulable here.
-async function handleManagementRequest({ log, candidate, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers, familyId, calendarConnected }) {
+async function handleManagementRequest({ log, candidate, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers, familyId, calendarConnected, text }) {
   if (!calendarConnected) {
     await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
     await messenger.send(senderIdentifier, "Google Calendar isn't connected yet — connect it from Settings first.");
     return { outcome: 'query_failed', log };
   }
 
-  const { management_action: managementAction, event_description: description, date_hint: dateHint, new_date: newDate, new_time: newTime } = candidate;
+  let { management_action: managementAction, event_description: description, date_hint: dateHint, new_date: newDate, new_time: newTime } = candidate;
+  // Live bug report — same deterministic weekday safety net as A1/capture:
+  // "cancel Tuesday's dance class" is exactly as reliant on correct weekday
+  // math as a query or a create is. Scoped to dateHint only (the search-
+  // narrowing field, directly analogous to A1's date_from/date_to) — NOT
+  // newDate, deliberately: a reschedule can legitimately name two different
+  // weekdays in one message ("move Tuesday's class to Wednesday"), and
+  // matchNamedWeekday only ever returns the first one it finds, which
+  // would be flatly wrong applied to the *target* day. Overriding just the
+  // lookup-narrowing field carries none of that ambiguity.
+  const namedWeekday = matchNamedWeekday(text);
+  if (namedWeekday !== null) {
+    dateHint = resolveNamedWeekdayDate(todayInTimeZone(timeZone), namedWeekday);
+  }
 
   // Real gap this guards against: without it, "move dance class" (no target
   // given at all) would fall through to performManagementAction, which

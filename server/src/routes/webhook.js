@@ -208,6 +208,14 @@ export function webhookRouter() {
               // part of the free-text title instead of resolving to
               // `person` (which is what color-matching keys off of).
               familyMemberNames: familyMembers.map((m) => m.name),
+              // Live bug report: a self-referential read-back query ("what
+              // do I have?", "מה יש לי?") never got audience-filtered at
+              // all — the LLM had no way to know WHO was asking, so it had
+              // nothing to resolve `person` to. senderFamilyMember is
+              // already resolved above (item 6's forwarded-sender lookup);
+              // reused here for the same "who is this" identity, not a
+              // second lookup.
+              senderName: senderFamilyMember?.name,
             }),
           calendar: {
             createEvent: (evt) => calendarIntegration.createEvent(credentials, evt),

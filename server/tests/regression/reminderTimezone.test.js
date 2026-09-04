@@ -17,7 +17,7 @@ import { seedFamily } from '../setup/seedFamily.js';
 import { createFakeCalendar, createFakeMessenger, createFakeLlm } from '../setup/fakes.js';
 import { handleIncomingMessage } from '../../src/pipeline/pipeline.js';
 import * as tasksRepo from '../../src/repositories/tasks.js';
-import { localDateTimeToUtcIso } from '../../src/pipeline/classify.js';
+import { localDateTimeToUtcIso, todayInTimeZone } from '../../src/pipeline/classify.js';
 
 let pool;
 
@@ -42,7 +42,16 @@ test('a reminder set for 22:30 in Asia/Jerusalem fires at 22:30 Jerusalem time, 
   const { family, knownSender } = await seedFamily(pool);
   const calendar = createFakeCalendar();
   const messenger = createFakeMessenger();
-  const today = new Date().toISOString().slice(0, 10);
+  // Real, pre-existing flakiness caught: this used raw UTC
+  // (new Date().toISOString().slice(0,10)) for "today," but the pipeline
+  // deterministically resolves "today" against the FAMILY's own timezone
+  // (overrideObviousRelativeDate -> todayInTimeZone('Asia/Jerusalem')).
+  // Those two disagree for part of every day whenever Jerusalem's local
+  // date has already rolled over but UTC's hasn't (e.g. 22:00-24:00 UTC in
+  // summer) — exactly the class of bug this whole file exists to guard
+  // against, just relocated into the test's own fixture instead of the
+  // app. Compute "today" the same way the app actually will.
+  const today = todayInTimeZone('Asia/Jerusalem');
   const llm = createFakeLlm({
     'Remind me to do the laundry at 22:30 today': {
       title: 'do the laundry', date: today, time: '22:30', person: null, category: null,

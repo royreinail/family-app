@@ -1237,6 +1237,96 @@ just an in-memory check); a manually-added event is adopted and found during a r
 query; and — the actual motivating scenario — **a real double-booking against a manually-added event is
 now correctly flagged**, which was silently impossible before this. Full suite: 172/172 passing.
 
+## Live bug report (Sept 5 2026) — A1 read-back: wrong weekday, missing audience filter, blank all-day
+
+Roy's own reproduction: `מה יש לי בשלישי` ("what do I have on Tuesday") sent Friday 2026-09-04 came
+back with the wrong date, showed events regardless of who they were for, and rendered an all-day event
+with a blank instead of a time. Three separate, real issues, all in A1's read-back path.
+
+**Issue 1 — wrong weekday, high severity (a confident, plausible, silently wrong answer).** Bare
+`בשלישי` (Tuesday) resolved to 2026-09-09 (a Wednesday) — one day late — while the qualified `יום שני
+הקרוב` (next Monday), asked the same evening, correctly resolved to 2026-09-07. Root cause: weekday
+names were never given the deterministic treatment `overrideObviousRelativeDate` already gives
+"today"/"tomorrow" — that function's own comment even named this as a known, deliberate gap ("anything
+less clear-cut… still goes through the LLM's own reasoning"). The report's own evidence (correct on a
+qualified phrase, wrong on a bare one, same evening) is exactly what "the LLM's own arithmetic isn't
+reliably consistent" looks like — not a fixable prompt tweak, the same class of problem
+`overrideObviousRelativeDate` already exists to route around entirely.
+
+Fixed with `classify.js`'s new `matchNamedWeekday`/`resolveNamedWeekdayDate`/`overrideNamedWeekday` —
+covers all 7 Hebrew weekday names and their English equivalents, bare or qualified (the qualifier
+changes how a phrase *reads*, never which weekday was actually named, so both resolve identically).
+Word-boundary matching only, never a bare substring: JS's `\b` is useless for Hebrew (defined only over
+`[A-Za-z0-9_]`), and Hebrew weekday words genuinely overlap with ordinal numbers (`שני` = Monday *or*
+"second") — a fragment match would misfire. Only `ב`/`ל` (directly-attached prepositions, e.g. `בשלישי`
+= ב + שלישי, "on Tuesday") are treated as a strippable prefix; `ה` (definite article) is deliberately
+excluded, since `השני` ("the second [thing]") is genuine, common ordinal usage, not a reference to
+Monday — a real false-positive this exclusion specifically guards against (see the test asserting it
+directly). Wired into all three date-bearing paths that can name a weekday: the capture path (extends
+the existing today/tomorrow override), A1's `date_from`/`date_to` (a query naming one weekday is always
+a single-day question), and A2's `date_hint` search-narrowing field (deliberately **not** `new_date` —
+a reschedule can legitimately name two different weekdays in one message, "move Tuesday's class to
+Wednesday", and the matcher only ever returns the first one found, which would be flatly wrong applied
+to the *target* day).
+
+**Issue 2 — audience filter never applied to a self-referential query.** `מה יש לי` ("what do I have,"
+"for me") never got D-1's own audience filter at all — not an LLM mistake, a real gap: the model had no
+way to resolve "me" to a specific family member because nothing ever told it *who was actually
+sending* the message. `person` matching for a *named* third party ("what does Gaia have") already
+worked correctly; there was simply no path for the sender's own identity to reach the model at all.
+Deterministic Hebrew regex heuristics for "self-reference" were considered and rejected — Hebrew's
+short prepositions (`לי`) are exactly the kind of fragment that also turns up substring-embedded in
+unrelated words (`לילדים`, "for the kids"), the same false-positive class this codebase's other Hebrew
+matching already goes out of its way to avoid. Fixed instead by giving the model the one piece of
+context it was missing: `llm.js`'s `buildSystemPrompt` gains an optional `senderName` parameter
+(threaded from `webhook.js`'s already-resolved `senderFamilyMember` — no new lookup), telling it who's
+sending and instructing it to resolve self-reference (`לי`/`שלי`/`אני`/"me"/"my") to that exact name,
+the same way a named third party already resolves. `record_query`'s own `person` field description was
+updated to state this explicitly rather than only describing the named-third-party case. Downstream
+filtering needed no changes at all — `matchSingleFamilyMember`/`matchMembersToEvent` already handle a
+resolved name correctly regardless of where it came from.
+
+**Issue 3 — all-day events rendered as a blank time (cosmetic, confirmed no data loss).** `formatEventLine`
+(A1 query results, and the D1 daily briefing — same shared function, same bug, fixed once) and
+`formatCandidateLine` (A2's disambiguation list) both left the time slot fully blank for an all-day
+event (`start.date`, no `start.dateTime`) — a blank read as "the bot lost the time," not "this
+genuinely has no specific time." Both now append `(all day)` explicitly instead of rendering nothing.
+
+`tests/regression/weekdayResolution.test.js` (new, 10 tests): every Hebrew weekday name, bare and
+qualified, against the exact reference date from the bug report (Friday 2026-09-04), asserted against
+an independently-computed expected-date table (not the function under test, so it's a real oracle);
+the same for English; the exact two reproductions from the report itself; the "today itself is the
+named weekday" case; the deliberate `ה`+ordinal false-positive exclusion; and both prefix letters.
+`readBackQueries.test.js` gained `buildSystemPrompt`'s sender-identity wiring, a self-referential query
+scoping correctly once `person` resolves, and a full end-to-end reproduction of Issues 1+2 together
+(deliberately including a fake LLM response with the WRONG weekday, same as the report, to prove the
+deterministic override corrects it regardless of what the model itself returned). Issue 3 is covered
+directly against `formatQueryReply` (the fake calendar's flat internal storage can't represent Google's
+real all-day shape — `start:{date}`, no `dateTime` — so it's exercised at the formatter, not through
+the full pipeline).
+
+**A real, separate class of bug surfaced while building this, not by the report:** several existing
+tests hardcoded a hit-or-miss weekday word ("Thursday", "Sunday") alongside a hardcoded absolute date,
+exactly the fragility one of this codebase's own existing test comments already named for "today"/
+"tomorrow" ("computing it the same way the pipeline does keeps this test correct on every future run,
+not just today") — now that weekday names get the identical deterministic treatment, those fixtures
+broke the moment real time moved past whatever date they'd assumed. Fixed each one either by computing
+the expected date the same way the app now does (`resolveNamedWeekdayDate`/`todayInTimeZone`, for tests
+where the weekday phrasing was integral to the scenario — the original 7 acceptance fixtures,
+`eventManagement.test.js`'s reschedule tests, `followUpAnswer.test.js`'s Hebrew "next Monday" scenario)
+or by dropping the incidental weekday word entirely (for tests where it was flavor text unrelated to
+what was actually being tested — duration math, conflict detection, location/recurrence). Also found
+and fixed, unrelated to this report: a genuine pre-existing UTC/Jerusalem date-boundary flake in
+`reminderTimezone.test.js` (computed "today" via raw UTC instead of the family's own timezone, exactly
+the class of bug `localDateTimeToUtcIso` exists to prevent in the app code — just relocated into the
+test's own fixture).
+
+Full suite: 189/189 passing (13 new tests). Real classification quality for weekday-in-context and
+self-reference phrasing is unaffected by this fix's own boundary-layer caveat where it doesn't need to
+be (Issue 1 is now fully deterministic, no LLM trust required at all) but remains unverified for Issue
+2 specifically (does the model actually recognize "לי" as self-referential once told who's asking) —
+needs a live retest, same caveat as every other real LLM judgment call in this codebase.
+
 ---
 
 ## "Family App" naming inventory (Aug 2026)
