@@ -169,6 +169,38 @@ create index if not exists rules_lookup_idx
   on rules (family_id, rule_type, trigger_type, priority)
   where deleted_at is null and enabled = true;
 
+-- C1 (standing rules taught in conversation, enhancement backlog): "art
+-- therapy is always at the Rothschild clinic" taught once, in chat, applied
+-- to every future matching message. Explicitly NOT the gate/assessment
+-- `rules` table above — that one drives the fixed extraction_classification/
+-- event_task_routing decision tree with json-rules-engine condition
+-- objects; a standing rule is a much simpler "if this keyword appears,
+-- default this field to this value" (or "change this named timing
+-- parameter") shape, natural-language-taught rather than engineered, and
+-- reviewed via a bot command only (D-3), not a Settings screen.
+create table if not exists standing_rules (
+  id uuid primary key default gen_random_uuid(),
+  family_id uuid not null references families(id),
+  rule_text text not null,            -- articulated, human-readable restatement shown for yes/no confirmation
+  rule_kind text not null,            -- 'event_default' | 'timing_param'
+  match_keyword text,                 -- event_default: substring matched against a future message's title/text
+  field text,                         -- event_default: which candidate field this defaults ('location'|'audience'|'duration_minutes'|'person')
+  value text,                         -- event_default: the value to apply
+  param_name text,                    -- timing_param: which named setting this changes (currently only 'briefing_send_time')
+  param_value text,                   -- timing_param: the new value
+  status text not null default 'pending', -- 'pending' | 'active' | 'discarded'
+  sender_identifier text,             -- who proposed it — the yes/no confirmation is matched to this sender, not re-parsed by the LLM
+  created_at timestamptz not null default now(),
+  confirmed_at timestamptz,
+  deleted_at timestamptz,
+  constraint standing_rules_kind_check check (rule_kind in ('event_default','timing_param')),
+  constraint standing_rules_status_check check (status in ('pending','active','discarded'))
+);
+create index if not exists standing_rules_pending_idx
+  on standing_rules (family_id, sender_identifier, status) where deleted_at is null;
+create index if not exists standing_rules_active_idx
+  on standing_rules (family_id, status) where deleted_at is null;
+
 create table if not exists bot_config (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references families(id),

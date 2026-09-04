@@ -9,8 +9,9 @@
 import * as extractionLogRepo from '../repositories/extractionLog.js';
 import * as tasksRepo from '../repositories/tasks.js';
 import * as botConfigRepo from '../repositories/botConfig.js';
+import * as standingRulesRepo from '../repositories/standingRules.js';
 import { evaluateRules } from '../rules/engine.js';
-import { matchCommand, helpReply, formatTaskList, parseCorrectedTime, parseCorrectedTimeRange, isBareTimeAnswer, bareDisambiguationChoice } from './commands.js';
+import { matchCommand, helpReply, formatTaskList, parseCorrectedTime, parseCorrectedTimeRange, isBareTimeAnswer, bareDisambiguationChoice, isYesNoAnswer } from './commands.js';
 import {
   factsFromCandidate,
   confirmReply,
@@ -39,6 +40,8 @@ import {
   formatNoMatchReply,
   formatManagementConfirmReply,
   formatAdditionalEventsNote,
+  applyStandingRuleDefaults,
+  formatRulesList,
 } from './classify.js';
 import { scheduleReminder } from './reminders.js';
 
@@ -173,6 +176,22 @@ export async function handleIncomingMessage(message, deps) {
     }
   }
 
+  // 3f. C1 (D-3) — resolves a pending standing-rule proposal's yes/no
+  // confirmation *without* a second LLM call: a bare "yes"/"no" only ever
+  // does anything here when a real pending proposal is actually found for
+  // this sender — a random "yes" to something else entirely falls straight
+  // through to normal extraction below, same "genuinely new message" safety
+  // net every other bare-answer path in this file already has.
+  if (!replyToExtractionLogId) {
+    const yesNo = isYesNoAnswer(text);
+    if (yesNo) {
+      const pendingRule = await standingRulesRepo.findRecentPending({ familyId, senderIdentifier }, pool);
+      if (pendingRule) {
+        return resolveStandingRule({ log, pendingRule, yesNo, messenger, senderIdentifier, pool });
+      }
+    }
+  }
+
   // 4. LLM extraction — the LLM's one job, wrapped for transient failures.
   let candidate;
   try {
@@ -196,6 +215,19 @@ export async function handleIncomingMessage(message, deps) {
   if (candidate.type === 'management') {
     return handleManagementRequest({ log, candidate, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers, familyId, calendarConnected });
   }
+  // C1 — "art therapy is always at the Rothschild clinic" is neither a
+  // create/query/manage request; branches off the same way, before any of
+  // the capture-only steps below.
+  if (candidate.type === 'rule') {
+    return handleRuleDefinition({ log, candidate, familyId, senderIdentifier, messenger, pool });
+  }
+
+  // C1 — active event-default standing rules ("art therapy is always at
+  // the Rothschild clinic") apply before any of the capture-only overrides
+  // below, filling in gaps only (see applyStandingRuleDefaults) — a taught
+  // default, not a silent override of whatever the message itself said.
+  const activeEventDefaults = await standingRulesRepo.findActiveByKind({ familyId, ruleKind: 'event_default' }, pool);
+  candidate = applyStandingRuleDefaults(candidate, text, activeEventDefaults);
 
   // "today"/"tomorrow" are unambiguous enough to not trust to LLM date
   // arithmetic — see classify.js for why (a real off-by-one was observed).
@@ -542,11 +574,67 @@ async function performManagementAction({ log, familyId, managementAction, item, 
   return { outcome: 'managed', managementAction, item, reply, log };
 }
 
+// C1 (D-3) — a rule-defining message never writes anything directly: the
+// LLM already articulated rule_text in the same call that detected the
+// intent (no second call), and this just parks it as a 'pending' row and
+// asks for a yes/no. resolveStandingRule (below) is the only thing that
+// ever flips it to 'active'.
+async function handleRuleDefinition({ log, candidate, familyId, senderIdentifier, messenger, pool }) {
+  const { rule_text: ruleText, rule_kind: ruleKind, field, match_keyword: matchKeyword, value, param_name: paramName, param_value: paramValue } = candidate;
+  const pending = await standingRulesRepo.create(
+    { familyId, ruleText, ruleKind, matchKeyword, field, value, paramName, paramValue, senderIdentifier },
+    pool
+  );
+  await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+  const reply = `${ruleText}\n\nShould I remember this? Reply yes or no.`;
+  await messenger.send(senderIdentifier, reply);
+  return { outcome: 'rule_pending', pending, reply, log };
+}
+
+// C1 (D-3) — the yes/no reply itself never touches the LLM: `yesNo` was
+// already resolved by commands.js's isYesNoAnswer via a closed word list,
+// matched directly against the pending DB record found by pipeline.js's own
+// step 3f.
+async function resolveStandingRule({ log, pendingRule, yesNo, messenger, senderIdentifier, pool }) {
+  await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+  if (yesNo === 'yes') {
+    await standingRulesRepo.confirm(pendingRule.id, pool);
+    const reply = "Got it — I'll remember that.";
+    await messenger.send(senderIdentifier, reply);
+    return { outcome: 'rule_confirmed', pendingRule, reply, log };
+  }
+  await standingRulesRepo.discard(pendingRule.id, pool);
+  const reply = "Okay, I won't apply that.";
+  await messenger.send(senderIdentifier, reply);
+  return { outcome: 'rule_discarded', pendingRule, reply, log };
+}
+
 async function handleCommand({ command, log, familyId, senderIdentifier, calendar, messenger, pool }) {
   if (command === 'help') {
     await messenger.send(senderIdentifier, helpReply());
     await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
     return { outcome: 'command', command, log };
+  }
+  // C1 — "rules" / "my rules" / "delete rule N", per D-3: reviewable only
+  // via a bot command, no Settings screen.
+  if (command === 'list_rules') {
+    const rules = await standingRulesRepo.findActiveForFamily(familyId, pool);
+    await messenger.send(senderIdentifier, formatRulesList(rules));
+    await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+    return { outcome: 'command', command, log, rules };
+  }
+  if (command?.type === 'delete_rule') {
+    const rules = await standingRulesRepo.findActiveForFamily(familyId, pool);
+    const target = rules[command.index - 1];
+    if (!target) {
+      await messenger.send(senderIdentifier, `I don't have a rule #${command.index} — reply "rules" to see the current list.`);
+      await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+      return { outcome: 'command', command, log, deleted: null };
+    }
+    await standingRulesRepo.softDelete(target.id, familyId, pool);
+    await messenger.send(senderIdentifier, `Deleted — "${target.rule_text}"`);
+    await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+    return { outcome: 'command', command, log, deleted: target };
   }
   if (command === 'list_tasks') {
     const tasks = await tasksRepo.findAllForFamily(familyId, pool);

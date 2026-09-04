@@ -108,6 +108,44 @@ export function sanitizeActivityIcon(icon) {
   return trimmed;
 }
 
+// C1 (standing rules taught in conversation) — applies any active
+// 'event_default' standing rule whose match_keyword appears in this
+// message (title or raw text), filling in only fields the extraction
+// itself left empty. Deliberately a *default*, never a silent override: if
+// the message already stated a location/audience/person, that stands — a
+// taught rule is a fallback for when the sender didn't say otherwise, the
+// same relationship the LLM's own 'family' audience default already has to
+// an explicit audience read. `duration_minutes` has no direct field on a
+// capture candidate (only an optional end_time) — stashed as
+// `ruleDurationMinutes` and only consulted by calendarPayloadFromCandidate
+// when the message gave no explicit end_time/range of its own.
+export function applyStandingRuleDefaults(candidate, rawInput, rules) {
+  if (!rules?.length) return candidate;
+  const haystack = `${rawInput || ''} ${candidate.title || ''}`.toLowerCase();
+  let result = candidate;
+  for (const rule of rules) {
+    if (!rule.match_keyword || !haystack.includes(rule.match_keyword.toLowerCase())) continue;
+    if (rule.field === 'location' && !result.location) result = { ...result, location: rule.value };
+    else if (rule.field === 'audience' && !result.audience) result = { ...result, audience: rule.value };
+    else if (rule.field === 'person' && !result.person) result = { ...result, person: rule.value };
+    else if (rule.field === 'duration_minutes' && !result.end_time && !result.ruleDurationMinutes) {
+      result = { ...result, ruleDurationMinutes: Number(rule.value) };
+    }
+  }
+  return result;
+}
+
+// C1 — "show my rules" / "delete rule N". Numbered the same way as every
+// other numbered-list-then-pick-by-index reply in this codebase (A2's
+// disambiguation) so "delete rule 2" means exactly what was just shown.
+export function formatRulesList(rules) {
+  if (!rules?.length) {
+    return 'No standing rules yet — tell me something like "art therapy is always at the Rothschild clinic" and I\'ll ask to remember it.';
+  }
+  const lines = rules.map((r, i) => `${i + 1}. ${r.rule_text}`);
+  return ['Your standing rules:', ...lines, '(reply "delete rule N" to remove one)'].join('\n');
+}
+
 export function factsFromCandidate(candidate) {
   const hasDate = candidate.date != null && candidate.date !== '';
   const hasTime = candidate.time != null && candidate.time !== '';
@@ -164,9 +202,15 @@ export function calendarPayloadFromCandidate(candidate, { familyMembers = [], ti
   // "Commanders Day 9:00-18:00" landing as 9:00-10:00). An end at or before
   // the start rolls past midnight (e.g. "9pm-1am") — roll the end date
   // forward a day rather than landing before the event even starts.
+  // C1's duration_minutes standing-rule default ("therapy sessions are
+  // always 50 minutes") only ever fills a gap the message itself left open
+  // — an explicit end_time/range always wins, checked first exactly like
+  // every other standing-rule field.
   const end = candidate.end_time
     ? { date: candidate.end_time <= candidate.time ? addDays(candidate.date, 1) : candidate.date, time: candidate.end_time }
-    : addOneHour(candidate.date, candidate.time);
+    : candidate.ruleDurationMinutes
+      ? addMinutes(candidate.date, candidate.time, candidate.ruleDurationMinutes)
+      : addOneHour(candidate.date, candidate.time);
   // Real bug: the kid dashboard re-derived "who is this event for" at read
   // time by scanning the event's title/description text for a family
   // member's literal name (dashboard.js's matchMembersToEvent) — completely
@@ -399,6 +443,17 @@ export function naiveDateTimeToUtcMs(str) {
   const [year, month, day] = datePart.split('-').map(Number);
   const [hour, minute, second = 0] = timePart.split(':').map(Number);
   return Date.UTC(year, month - 1, day, hour, minute, second);
+}
+
+// C1 (duration_minutes standing-rule default) — same naive-wall-clock-safe
+// reasoning as naiveDateTimeToUtcMs/utcMsToNaiveDateTime just below (which
+// this is built directly on top of, rather than a fresh `new Date()` +
+// arithmetic that would reintroduce the exact server-local-timezone bug
+// those two exist to prevent), generalized to an arbitrary minute offset.
+export function addMinutes(dateStr, timeStr, minutes) {
+  const ms = naiveDateTimeToUtcMs(`${dateStr}T${timeStr}:00`) + minutes * 60 * 1000;
+  const naive = utcMsToNaiveDateTime(ms);
+  return { date: naive.slice(0, 10), time: naive.slice(11, 16) };
 }
 
 export function utcMsToNaiveDateTime(ms) {

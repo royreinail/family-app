@@ -57,6 +57,66 @@ const MANAGEMENT_TOOL = {
   },
 };
 
+// C1 (standing rules taught in conversation) — a fourth intent alongside
+// create/query/manage: "remember this permanently," not "act on this once."
+// Per D-3's specific efficiency requirement, `rule_text` is an articulated,
+// human-readable restatement of the rule produced in this SAME call — the
+// bot shows it back for a yes/no confirmation, and that confirmation reply
+// is matched directly against the pending DB record (see pipeline.js's
+// resolveStandingRule), never sent through a second LLM call. Deliberately
+// modeled as two narrow rule_kinds rather than a free-form
+// conditions/actions blob: 'event_default' fills in one field whenever a
+// future message's title/text contains a keyword (location/audience/
+// duration/person defaults — covers most of the doc's own examples), and
+// 'timing_param' changes a single named bot setting (currently only the
+// daily briefing's send time, D-4). More elaborate rules (day-conditional
+// ownership like "Shani handles Tuesdays, I handle Thursdays") are still
+// recorded and shown back via rule_text for a human to read, but their
+// *application* is out of scope for this pass — a known, stated limitation,
+// not a silent gap (see standing_rules' own schema comment).
+const RULE_TOOL = {
+  name: 'record_rule',
+  description:
+    'Record a standing/general instruction the sender wants remembered and applied to every future matching message — phrased as "always"/"never"/"from now on"/a general policy, not a one-off event or question. E.g. "art therapy is always at the Rothschild clinic", "never remind me before 07:00", "send the daily briefing at 21:00", "anything I forward from the school group is for both kids". Not for creating one specific event (use record_extraction), asking what already exists (use record_query), or changing one specific existing event (use record_management).',
+  input_schema: {
+    type: 'object',
+    properties: {
+      rule_text: {
+        type: 'string',
+        description: 'A clear, complete, human-readable restatement of the rule, shown to the sender for a yes/no confirmation — e.g. "Art therapy will always be located at the Rothschild clinic."',
+      },
+      rule_kind: {
+        type: 'string',
+        enum: ['event_default', 'timing_param'],
+        description: "'event_default' sets a default field value whenever a future message's title/text contains a keyword (location/audience/duration/person defaults). 'timing_param' changes a named bot setting (currently only the daily briefing's send time). Pick whichever the rule is actually closer to — a rule that doesn't cleanly fit either still gets recorded (rule_text alone is always meaningful), just without automatic application.",
+      },
+      field: {
+        type: ['string', 'null'],
+        enum: ['location', 'audience', 'duration_minutes', 'person', null],
+        description: "rule_kind 'event_default' only — which field the default applies to.",
+      },
+      match_keyword: {
+        type: ['string', 'null'],
+        description: "rule_kind 'event_default' only — the word/phrase a future message's title or text should contain for this default to apply, e.g. 'art therapy'.",
+      },
+      value: {
+        type: ['string', 'null'],
+        description: "rule_kind 'event_default' only — the value to apply, e.g. 'Rothschild clinic', '50' (minutes), 'parent_only', or a family member's name.",
+      },
+      param_name: {
+        type: ['string', 'null'],
+        enum: ['briefing_send_time', null],
+        description: "rule_kind 'timing_param' only — which setting this changes. Currently only 'briefing_send_time' exists.",
+      },
+      param_value: {
+        type: ['string', 'null'],
+        description: "rule_kind 'timing_param' only — the new value, e.g. '21:00' for briefing_send_time.",
+      },
+    },
+    required: ['rule_text', 'rule_kind', 'field', 'match_keyword', 'value', 'param_name', 'param_value'],
+  },
+};
+
 // A3 (multi-event extraction) — a forwarded school schedule or flyer often
 // lists several dates at once ("swimming Mon & Wed, trip Friday"). The
 // original schema only ever had room for one event, so extraction silently
@@ -164,11 +224,15 @@ const EXTRACTION_TOOL = {
 const SYSTEM_PROMPT = `You extract plain factual fields from a short family message — forwarded
 WhatsApp text, a photographed flyer/schedule (read the image directly; it may be in any language,
 including Hebrew — extract fields in whatever language the source uses, don't translate), or a
-forwarded email. First decide which of the three tools actually fits: record_query when the sender
+forwarded email. First decide which of the four tools actually fits: record_query when the sender
 is asking what's already on the calendar ("what's on tomorrow?", "מה יש לגאיה ביום שלישי?", "any
 plans Friday?") — a real question, not a statement; record_management when the sender wants to
 cancel or change something that already exists ("cancel dance class Thursday", "move it to
-17:00", "בטלי את"); record_extraction for a message describing something new to create. Judge this
+17:00", "בטלי את"); record_rule when the sender is teaching a standing, general instruction to
+apply going forward ("always"/"never"/"from now on"/a general policy — "art therapy is always at
+the Rothschild clinic", "never remind me before 07:00") rather than describing one specific thing
+to create, ask about, or change; record_extraction for a message describing something new to
+create. Judge all of this
 the same way as reminder_requested below: by intent, in any phrasing or language, not a fixed
 trigger word. Do not decide what should happen with the
 message beyond that one choice — only report what is literally present. If a field isn't stated,
@@ -209,12 +273,12 @@ their name in it (e.g. prefer "Shopping" over "Shopping with Shai" when person i
 /**
  * @param {string} rawInput - message text, or a caption/empty string when `opts.image` is set
  * @param {{referenceDate?: string, model?: string, image?: {base64: string, mimeType: string}, familyMemberNames?: string[]}} [opts]
- * @returns {Promise<{type:'capture',title:string|null,date:string|null,time:string|null,end_time:string|null,person:string|null,category:string|null,reminder_requested:boolean,reminder_datetime:string|null,audience:'family'|'parent_only',activity_icon:string} | {type:'query',date_from:string,date_to:string,person:string|null} | {type:'management',management_action:'cancel'|'reschedule',event_description:string,date_hint:string|null,new_date:string|null,new_time:string|null}>}
+ * @returns {Promise<{type:'capture',title:string|null,date:string|null,time:string|null,end_time:string|null,person:string|null,category:string|null,location:string|null,recurrence:string|null,reminder_requested:boolean,reminder_datetime:string|null,audience:'family'|'parent_only',activity_icon:string,additional_events:object[]} | {type:'query',date_from:string,date_to:string,person:string|null} | {type:'management',management_action:'cancel'|'reschedule',event_description:string,date_hint:string|null,new_date:string|null,new_time:string|null} | {type:'rule',rule_text:string,rule_kind:'event_default'|'timing_param',field:string|null,match_keyword:string|null,value:string|null,param_name:string|null,param_value:string|null}>}
  *   `type` distinguishes a capture (create something) from a read-back
- *   query (A1) or a cancel/reschedule request (A2) — callers that only
- *   ever handled captures before this can keep treating a missing/
- *   `'capture'` type exactly as before; every original capture field is
- *   still present at the top level, unchanged.
+ *   query (A1), a cancel/reschedule request (A2), or a standing-rule
+ *   proposal (C1) — callers that only ever handled captures before this can
+ *   keep treating a missing/`'capture'` type exactly as before; every
+ *   original capture field is still present at the top level, unchanged.
  */
 export async function extract(rawInput, opts = {}) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -244,11 +308,11 @@ export async function extract(rawInput, opts = {}) {
       max_tokens: 512,
       system: buildSystemPrompt(opts.familyMemberNames),
       messages: [{ role: 'user', content }],
-      tools: [EXTRACTION_TOOL, QUERY_TOOL, MANAGEMENT_TOOL],
+      tools: [EXTRACTION_TOOL, QUERY_TOOL, MANAGEMENT_TOOL, RULE_TOOL],
       // 'any' (not 'tool'/name-forced, not 'auto') — forces exactly one
       // tool call every time (never a free-text non-tool reply, same
       // guarantee the old forced single-tool call had), but lets the model
-      // choose *which* of the three tools actually fits this message.
+      // choose *which* of the four tools actually fits this message.
       tool_choice: { type: 'any' },
     }),
   });
@@ -259,6 +323,7 @@ export async function extract(rawInput, opts = {}) {
   const data = await res.json();
   const toolUse = data.content?.find((c) => c.type === 'tool_use');
   if (!toolUse) throw new Error('LLM response did not include the expected tool call.');
-  const type = toolUse.name === 'record_query' ? 'query' : toolUse.name === 'record_management' ? 'management' : 'capture';
+  const TYPE_BY_TOOL = { record_query: 'query', record_management: 'management', record_rule: 'rule' };
+  const type = TYPE_BY_TOOL[toolUse.name] ?? 'capture';
   return { ...toolUse.input, type };
 }

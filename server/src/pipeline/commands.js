@@ -6,13 +6,44 @@ const HELP_TEXT =
   '• Forward a message, photo, or email — I\'ll try to add it to the calendar or tasks.\n' +
   '• "undo" — reverts the last thing I added for you.\n' +
   '• "list tasks" — shows the current task list.\n' +
-  '• Reply to one of my confirmations with a correction (e.g. "no, 5pm") to fix it.';
+  '• Reply to one of my confirmations with a correction (e.g. "no, 5pm") to fix it.\n' +
+  '• Tell me a standing rule ("art therapy is always at the Rothschild clinic") and I\'ll ask to confirm, then remember it.\n' +
+  '• "rules" — shows the standing rules I currently apply; "delete rule N" removes one.';
+
+// C1 — "show my rules" / "my rules" / "list rules", matched the cheap way
+// every other command is (before the LLM, before gate rules) since this is
+// fixed system behavior, not business policy.
+const RULES_COMMAND = /^(show|list)?\s*(my )?rules$/i;
+// "delete rule 2" / "forget rule 2" / "remove rule 2" — the index refers to
+// the numbering `formatRulesList` just showed (same "numbered list, pick by
+// index" convention as A2's disambiguation reply).
+const DELETE_RULE_COMMAND = /^(forget|delete|remove) rule (\d+)$/i;
 
 export function matchCommand(text) {
-  const trimmed = (text || '').trim().toLowerCase();
-  if (trimmed === 'undo') return 'undo';
-  if (trimmed === 'list tasks') return 'list_tasks';
-  if (trimmed === 'help') return 'help';
+  const trimmed = (text || '').trim();
+  const lower = trimmed.toLowerCase();
+  if (lower === 'undo') return 'undo';
+  if (lower === 'list tasks') return 'list_tasks';
+  if (lower === 'help') return 'help';
+  if (RULES_COMMAND.test(lower)) return 'list_rules';
+  const deleteMatch = trimmed.match(DELETE_RULE_COMMAND);
+  if (deleteMatch) return { type: 'delete_rule', index: parseInt(deleteMatch[2], 10) };
+  return null;
+}
+
+// C1 (D-3) — resolves the yes/no reply to a pending standing-rule proposal
+// *without* a second LLM call, per D-3's explicit efficiency requirement:
+// match the bare reply directly against the pending record. Deliberately a
+// closed word list, not a free-text-intent judgment (that would be exactly
+// the "second LLM call" this exists to avoid) — a message that doesn't
+// reduce to one of these exact words isn't treated as an answer at all, and
+// falls through to normal extraction untouched.
+const YES_WORDS = new Set(['yes', 'y', 'yeah', 'yep', 'yea', 'sure', 'ok', 'okay', 'correct', 'confirm', 'confirmed', 'נכון', 'כן', 'בטח', 'אישור']);
+const NO_WORDS = new Set(['no', 'n', 'nope', 'nah', 'cancel', 'לא', 'ביטול']);
+export function isYesNoAnswer(text) {
+  const raw = (text || '').trim().toLowerCase().replace(/[.!?]+$/, '');
+  if (YES_WORDS.has(raw)) return 'yes';
+  if (NO_WORDS.has(raw)) return 'no';
   return null;
 }
 
