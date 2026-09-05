@@ -192,6 +192,93 @@ test('an out-of-range disambiguation reply does not silently pick something', as
   assert.match(result.reply, /1 to 2/);
 });
 
+// Gap audit: the disambiguation -> resolve-by-number flow above is only
+// ever tested for 'cancel'. resolveDisambiguation/performManagementAction
+// don't branch differently for 'reschedule' (both just read
+// pending.ai_candidate.managementAction), so this was very likely fine —
+// but that's exactly the same "generic code, assumed fine, never actually
+// exercised" shape as the C1 timing_param/prep_association gap just closed
+// elsewhere, and newDate/newTime specifically have to survive being parked
+// in the pending record across the whole disambiguation round-trip.
+test('rescheduling also supports disambiguation: the chosen match is moved, the other is untouched', async () => {
+  const { family, knownSender } = await seedFamily(pool);
+  const calendar = createFakeCalendar();
+  const messenger = createFakeMessenger();
+  const thursday = resolveNamedWeekdayDate(todayInTimeZone('UTC'), 4);
+  const llm = createFakeLlm({
+    'Dance class Thursday 4pm': {
+      title: 'Dance class', date: '2026-09-03', time: '16:00', end_time: null, person: null, category: 'activity',
+      reminder_requested: false, reminder_datetime: null,
+    },
+    'Dance rehearsal Thursday 6pm': {
+      title: 'Dance rehearsal', date: '2026-09-03', time: '18:00', end_time: null, person: null, category: 'activity',
+      reminder_requested: false, reminder_datetime: null,
+    },
+    'Move the dance thing to 8pm': {
+      type: 'management', management_action: 'reschedule', event_description: 'dance', date_hint: null, new_date: null, new_time: '20:00',
+    },
+  });
+
+  await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Dance class Thursday 4pm', externalMessageId: 'wamid.mgmt-6a' },
+    { pool, llmExtract: llm.extract, calendar, messenger }
+  );
+  await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Dance rehearsal Thursday 6pm', externalMessageId: 'wamid.mgmt-6b' },
+    { pool, llmExtract: llm.extract, calendar, messenger }
+  );
+
+  const asked = await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Move the dance thing to 8pm', externalMessageId: 'wamid.mgmt-6c' },
+    { pool, llmExtract: llm.extract, calendar, messenger, timeZone: 'UTC', calendarConnected: true }
+  );
+  assert.equal(asked.outcome, 'needs_disambiguation');
+
+  const resolved = await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: '2', externalMessageId: 'wamid.mgmt-6d' },
+    { pool, llmExtract: llm.extract, calendar, messenger }
+  );
+
+  assert.equal(resolved.outcome, 'managed');
+  assert.match(resolved.reply, /Moved/);
+  assert.match(resolved.reply, /Dance rehearsal/);
+  const events = [...calendar.events.values()];
+  const moved = events.find((e) => e.title === 'Dance rehearsal');
+  const untouched = events.find((e) => e.title === 'Dance class');
+  assert.equal(moved.startDateTime, `${thursday}T20:00:00`, 'the chosen event moved to the new time');
+  assert.equal(untouched.startDateTime, `${thursday}T16:00:00`, 'the other match must survive completely untouched');
+});
+
+// Gap audit: family-app-architecture.md makes an explicit, previously
+// unverified claim — "Google's own listEvents(singleEvents: true) already
+// expands a recurring event into individually-addressable instances, so
+// canceling one Tuesday of a weekly event needed no extra code." Real
+// Google Calendar always returns each occurrence of a recurring event as
+// its own event object with its own unique id when singleEvents is set;
+// simulated here directly (the fake calendar's flat internal storage
+// doesn't itself expand recurrence, so each occurrence is stored as its
+// own independent entry, same shape a real API response would already be
+// in by the time this code ever sees it).
+test('cancelling one occurrence of a recurring-shaped series (a dateHint match) leaves the other occurrences untouched', async () => {
+  const { family, knownSender } = await seedFamily(pool);
+  const calendar = createFakeCalendar();
+  const messenger = createFakeMessenger();
+  calendar.events.set('therapy-occ-1', { title: 'Therapy', startDateTime: '2026-09-07T16:00:00', endDateTime: '2026-09-07T16:50:00' });
+  calendar.events.set('therapy-occ-2', { title: 'Therapy', startDateTime: '2026-09-14T16:00:00', endDateTime: '2026-09-14T16:50:00' });
+  const llm = createFakeLlm({
+    'Cancel therapy on the 7th': { type: 'management', management_action: 'cancel', event_description: 'therapy', date_hint: '2026-09-07', new_date: null, new_time: null },
+  });
+
+  const result = await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Cancel therapy on the 7th', externalMessageId: 'wamid.mgmt-7' },
+    { pool, llmExtract: llm.extract, calendar, messenger, timeZone: 'UTC', calendarConnected: true }
+  );
+
+  assert.equal(result.outcome, 'managed', 'the dateHint disambiguated to exactly one occurrence -- no "which one?" needed');
+  assert.equal(calendar.events.size, 1, 'only the named occurrence was cancelled');
+  assert.equal(calendar.events.get('therapy-occ-2').startDateTime, '2026-09-14T16:00:00', 'the other occurrence in the series survives untouched');
+});
+
 test('rescheduling with a given time moves the real event and preserves its original duration', async () => {
   const { family, knownSender } = await seedFamily(pool);
   const calendar = createFakeCalendar();

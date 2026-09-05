@@ -110,3 +110,66 @@ test('a family with no Google Calendar connected is skipped cleanly (no crash, n
   assert.equal(sent.length, 0);
   assert.equal(messenger.sent.length, 0);
 });
+
+// Gap audit: every other sweep test seeds exactly one family — nothing
+// exercised two families in the SAME tick, where a real bug (sending
+// family A's content to family B, or marking both "sent" when only one
+// was actually due) would show up as cross-contamination between them,
+// not a crash.
+test('two families in the same sweep tick are handled independently: one due, one not, no cross-contamination', async () => {
+  const due = await seedFamily(pool, { knownSender: '+15551110001' });
+  const notDue = await seedFamily(pool, { knownSender: '+15551110002' });
+  await googleCredentialsRepo.upsert({ familyId: due.family.id, googleAccountEmail: 'due@example.com', accessToken: 't', refreshToken: 'r', scope: 'x', expiryDate: null }, pool);
+  await googleCredentialsRepo.upsert({ familyId: notDue.family.id, googleAccountEmail: 'notdue@example.com', accessToken: 't', refreshToken: 'r', scope: 'x', expiryDate: null }, pool);
+  // "due" gets a 00:00 (always-due) rule; "notDue" is marked already-sent
+  // TODAY directly, deterministically skipping it via the
+  // lastSentDateLocal === todayLocal check — not by racing the real clock
+  // against a send-time threshold (this file's own shouldSendBriefingNow
+  // unit test already covers that decision in isolation).
+  await standingRulesRepo.create(
+    { familyId: due.family.id, ruleText: 'x', ruleKind: 'timing_param', paramName: 'briefing_send_time', paramValue: '00:00', senderIdentifier: due.knownSender },
+    pool
+  ).then((r) => standingRulesRepo.confirm(r.id, pool));
+  await familiesRepo.markBriefingSent(notDue.family.id, todayInTimeZone(notDue.family.timezone), pool);
+
+  const tomorrow = addDays(todayInTimeZone(due.family.timezone), 1);
+  const calendar = {
+    listEvents: async () => [{ id: 'e1', summary: "Due family's event", start: { dateTime: `${tomorrow}T09:00:00` }, extendedProperties: { private: {} } }],
+  };
+  const messenger = createFakeMessenger();
+
+  const sent = await sweepDailyBriefings({ pool, calendar, messenger });
+
+  assert.equal(sent.length, 1, 'only the due family was briefed');
+  assert.equal(sent[0].familyId, due.family.id);
+  assert.equal(messenger.sent.length, 1);
+  assert.match(messenger.sent[0].text, /Due family's event/);
+
+  const dueAfter = await familiesRepo.findById(due.family.id, pool);
+  assert.equal(todayInTimeZone(due.family.timezone), dueAfter.last_briefing_sent_date instanceof Date ? dueAfter.last_briefing_sent_date.toISOString().slice(0, 10) : dueAfter.last_briefing_sent_date);
+  // The not-due family's calendar must never even have been read for it —
+  // proves the two families are handled independently, not just that
+  // one happened not to receive a message.
+  assert.equal(sent.find((s) => s.familyId === notDue.family.id), undefined);
+});
+
+// Gap audit: no test proved a real Calendar read failure inside the sweep
+// leaves last_briefing_sent_date untouched — without that, a transient
+// hiccup on the one night it matters would permanently skip that family's
+// briefing for the rest of the day instead of retrying on the next tick.
+test('a Calendar read failure during the sweep does not mark the family as briefed, so the next tick retries', async () => {
+  const { family } = await seedFamily(pool);
+  await googleCredentialsRepo.upsert({ familyId: family.id, googleAccountEmail: 'x@example.com', accessToken: 't', refreshToken: 'r', scope: 'x', expiryDate: null }, pool);
+  await standingRulesRepo.create(
+    { familyId: family.id, ruleText: 'x', ruleKind: 'timing_param', paramName: 'briefing_send_time', paramValue: '00:00', senderIdentifier: 's' },
+    pool
+  ).then((r) => standingRulesRepo.confirm(r.id, pool));
+
+  const messenger = createFakeMessenger();
+  const sent = await sweepDailyBriefings({ pool, calendar: { listEvents: async () => { throw new Error('transient Calendar hiccup'); } }, messenger });
+
+  assert.equal(sent.length, 0);
+  assert.equal(messenger.sent.length, 0, 'nothing partial gets sent on a failed read');
+  const after = await familiesRepo.findById(family.id, pool);
+  assert.equal(after.last_briefing_sent_date, null, 'must stay unset so the very next sweep tick retries instead of skipping the whole day');
+});

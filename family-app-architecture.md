@@ -1327,6 +1327,95 @@ be (Issue 1 is now fully deterministic, no LLM trust required at all) but remain
 2 specifically (does the model actually recognize "לי" as self-referential once told who's asking) —
 needs a live retest, same caveat as every other real LLM judgment call in this codebase.
 
+## Regression gap audit (Sept 5 2026)
+
+Roy's direct follow-up to the bug report above: the last three issues *should have been caught by
+tests* — so before writing any more code, compile a scenario list for the whole bot from scratch (not
+from what's already tested), cross-check it against the real suite, and close the real gaps found.
+
+**Honest answer first, not deflection: only one of the three issues actually *could* have been caught
+by a test under the architecture as it stood.** Issues 1 and 2 were both LLM *behavior* gaps — the
+weekday arithmetic and the self-reference resolution both happened (or failed to happen) inside the
+real model call, which this codebase has deliberately never unit-tested, the same boundary-layer
+convention applied consistently everywhere else (dashboard.js's real Calendar calls, llm.js's real
+`fetch`, messenger.js's real WhatsApp send). A test cannot catch a bug in behavior it was never asking
+the code to exercise. What the bug report's real fix actually did — and this is the meaningful
+takeaway, not an excuse — was **move both from "LLM behavior, untestable" to "deterministic app code,
+fully testable"**: `overrideNamedWeekday` and the sender-identity system-prompt line turned an LLM
+judgment call into either a pure function with an oracle-checked test table (weekday resolution) or a
+verified wiring path with a real downstream contract test (self-reference). Issue 3 (all-day blank
+time) is the one that genuinely *was* code with a test already sitting on top of it —
+`formatQueryReply`'s own test existed and exercised exactly this input, but its own assertion (`/All-day
+trip$/m`, i.e. "ends in nothing") *encoded the bug as the expected, correct behavior*. That's a distinct
+and arguably more concerning failure mode than a missing test: 100% line coverage doesn't catch a bug
+whose test was written to expect it.
+
+**The actual gap audit**, done the way Roy asked — a scenario list compiled independently across every
+feature area (capture, corrections, A1 queries, A2 management, C1 rules, D1 briefing, event adoption,
+commands, reminders), then checked line-by-line against all 30 test files and ~190 existing tests —
+found real, confirmed-by-grep coverage holes, all now closed:
+
+- **The bot's three original system commands — `undo`, `list tasks`, `help` — had zero tests anywhere**,
+  despite being core, deterministic, pre-LLM-call, everyday-use features (confirmed via a direct grep
+  for `'undo'`/`list_tasks`/`'help'` across every test file — nothing matched). New
+  `tests/regression/commands.test.js` (10 tests): `matchCommand` recognition and non-misfire on a real
+  message that happens to contain one of these words, `formatTaskList`/`helpReply` directly, and the
+  full command through `handleIncomingMessage` for all three — including that a command resolves
+  *before* the LLM is ever called, and that `undo` correctly branches on whether the target was a
+  Calendar event (delete) or a task (soft-delete).
+- **`sweepDueReminders` — the mechanism that actually *delivers* a scheduled reminder** (`server.js`
+  runs it every 60s) — had zero tests. `scheduleReminder` (creating the row) and its timezone
+  conversion were well covered; the read-back-and-send half never was. New
+  `tests/regression/reminderSweep.test.js` (5 tests): a due reminder sent to the right sender and
+  marked sent, a not-yet-due one left alone, an already-sent one never resent, a reminder with no
+  traceable sender skipped without crashing (documents the actual current behavior rather than assuming
+  it), and multiple due reminders across different senders each reaching the right person in one sweep.
+- **A1's and A2's own `calendar.listEvents` failure handling was never exercised with a real thrown
+  error** — only the write path (`calendar.createEvent`) got dedicated reauth/generic-failure tests,
+  added after Roy's own report was traced to exactly this gap on the *read* side, which ironically never
+  got the equivalent treatment itself. Confirmed via grep (`invalid_grant`/`deadTokenError` appeared
+  nowhere in `readBackQueries.test.js` or `eventManagement.test.js`). Added to
+  `calendarErrorHandling.test.js`: A1 query with a dead token (reconnect message) and a transient
+  hiccup (generic retry, no raw error leaked), and A2's own search with a dead token.
+- **C1's `timing_param` and `prep_association` rule kinds were only ever tested by inserting an
+  already-active row directly via the repo** (`dailyBriefing.test.js`, `prepAwareness.test.js`) — never
+  through the actual propose-then-confirm chat conversation that `event_default` gets extensive
+  coverage for. `handleRuleDefinition`/`resolveStandingRule` don't branch on `rule_kind` at all, so this
+  was very likely fine regardless — but "very likely fine" is the exact assumption that missed the
+  weekday bug. Added two full chat-flow tests to `standingRules.test.js` proving both actually reach
+  `findActiveParam`/`findActiveByKind` as active only after a real yes/no confirmation, not before.
+- **The daily briefing sweep was never tested with two families in the same tick** — every existing
+  test seeded exactly one, so cross-contamination (family A's content reaching family B, or marking
+  both "sent" when only one was due) had no way to surface as a *test* failure, only as a real
+  production incident. Added a two-family independence test (deterministic — the not-due family is
+  marked already-sent-today directly, rather than racing the real send-time threshold, avoiding a new
+  flake while closing this one) and a Calendar-read-failure-during-the-sweep test proving
+  `last_briefing_sent_date` stays unset so the next tick retries instead of silently skipping the whole
+  day.
+- **A2's disambiguation → resolve-by-number flow was only ever tested for `cancel`**, never
+  `reschedule` — `resolveDisambiguation`/`performManagementAction` don't branch on the action either,
+  same "generic code, unverified for one of its two real callers" shape as the C1 gap above. Added a
+  reschedule-through-disambiguation test proving `newTime` survives being parked in the pending record
+  across the whole round-trip and the chosen match (not the other one) actually moves.
+- **The architecture doc's own claim that A2 needs no special handling for recurring events — "Google's
+  own `listEvents(singleEvents: true)` already expands a recurring event into individually-addressable
+  instances" — had never actually been verified by a test**, just asserted. Added a test simulating
+  what a real expanded response looks like (two independent event objects, same title, different
+  dates/ids) and confirming a `dateHint`-scoped cancel touches only the one named occurrence.
+
+Also fixed in passing: a `standingRules.test.js` fixture using bare "Monday" alongside a hardcoded
+absolute date — the exact fragility class the weekday-resolution fix above already found and fixed
+elsewhere, just not yet in this one file.
+
+Full suite: 213/213 passing (24 new tests this pass). **What actually changes going forward**, per the
+honest-answer framing above: the way to make more of this class of bug "catchable by tests" isn't more
+tests on the current architecture — it's continuing to move anything with an objectively correct
+answer (dates, arithmetic, matching) out of LLM judgment and into deterministic, directly-tested code,
+the same move the bug report's own fix already made twice. Genuine natural-language judgment calls
+(does the model correctly classify intent, does it recognize self-reference in a given phrasing) stay
+real, live-testable-only gaps by design — not oversights, but they should be named as such rather than
+assumed covered.
+
 ---
 
 ## "Family App" naming inventory (Aug 2026)

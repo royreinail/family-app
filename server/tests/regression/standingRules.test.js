@@ -13,7 +13,7 @@ import { createFakeCalendar, createFakeMessenger, createFakeLlm } from '../setup
 import { handleIncomingMessage } from '../../src/pipeline/pipeline.js';
 import * as standingRulesRepo from '../../src/repositories/standingRules.js';
 import { isYesNoAnswer, matchCommand } from '../../src/pipeline/commands.js';
-import { applyStandingRuleDefaults, formatRulesList } from '../../src/pipeline/classify.js';
+import { applyStandingRuleDefaults, formatRulesList, resolveNamedWeekdayDate, todayInTimeZone } from '../../src/pipeline/classify.js';
 
 let pool;
 beforeEach(() => {
@@ -205,6 +205,11 @@ test('a duration_minutes standing rule fills in a default duration only when no 
     pool
   ).then((r) => standingRulesRepo.confirm(r.id, pool));
 
+  // classify.js's overrideNamedWeekday deterministically recomputes
+  // "Monday" against the real current date — compute the expected date the
+  // same way rather than hardcoding it (same fragility this codebase's own
+  // dedicated weekday-resolution fix elsewhere already guards against).
+  const monday = resolveNamedWeekdayDate(todayInTimeZone('UTC'), 1);
   const llm = createFakeLlm({
     'Therapy Monday 4pm': {
       title: 'Therapy', date: '2026-09-07', time: '16:00', end_time: null, person: null, category: 'appointment',
@@ -217,6 +222,74 @@ test('a duration_minutes standing rule fills in a default duration only when no 
     { pool, llmExtract: llm.extract, calendar, messenger }
   );
   const written = calendar.events.get(result.eventRef.external_id);
-  assert.equal(written.startDateTime, '2026-09-07T16:00:00');
-  assert.equal(written.endDateTime, '2026-09-07T16:50:00', '50-minute rule default applied since no explicit end_time was given');
+  assert.equal(written.startDateTime, `${monday}T16:00:00`);
+  assert.equal(written.endDateTime, `${monday}T16:50:00`, '50-minute rule default applied since no explicit end_time was given');
+});
+
+// Gap audit: 'event_default' gets extensive chat-flow coverage above
+// (propose -> pending -> confirm -> applied), but 'timing_param' and
+// 'prep_association' were ONLY ever tested by inserting an already-active
+// row directly via the repo (dailyBriefing.test.js, prepAwareness.test.js)
+// — never through the actual propose-then-confirm conversation.
+// handleRuleDefinition/resolveStandingRule don't branch on rule_kind at
+// all, so this was very likely fine either way, but "very likely fine" is
+// exactly the assumption that missed the weekday bug — worth proving
+// directly rather than trusting the shared code path silently.
+test('a timing_param rule (briefing send time) goes through the full propose -> confirm chat flow, not just a direct repo insert', async () => {
+  const { family, knownSender } = await seedFamily(pool);
+  const calendar = createFakeCalendar();
+  const messenger = createFakeMessenger();
+  const llm = createFakeLlm({
+    'Send the daily briefing at 21:00': {
+      type: 'rule', rule_text: 'The daily briefing will be sent at 21:00.', rule_kind: 'timing_param',
+      field: null, match_keyword: null, value: null, param_name: 'briefing_send_time', param_value: '21:00',
+    },
+  });
+
+  const proposed = await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Send the daily briefing at 21:00', externalMessageId: 'wamid.tp1' },
+    { pool, llmExtract: llm.extract, calendar, messenger }
+  );
+  assert.equal(proposed.outcome, 'rule_pending');
+  assert.equal((await standingRulesRepo.findActiveParam({ familyId: family.id, paramName: 'briefing_send_time' }, pool)), null, 'not active until confirmed');
+
+  const confirmed = await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: 'yes', externalMessageId: 'wamid.tp2' },
+    { pool, llmExtract: llm.extract, calendar, messenger }
+  );
+  assert.equal(confirmed.outcome, 'rule_confirmed');
+  assert.equal(llm.calls.length, 1, 'the yes/no confirmation must not call the LLM a second time');
+
+  const active = await standingRulesRepo.findActiveParam({ familyId: family.id, paramName: 'briefing_send_time' }, pool);
+  assert.ok(active, 'now active after confirmation');
+  assert.equal(active.param_value, '21:00');
+});
+
+test('a prep_association rule goes through the full propose -> confirm chat flow, not just a direct repo insert', async () => {
+  const { family, knownSender } = await seedFamily(pool);
+  const calendar = createFakeCalendar();
+  const messenger = createFakeMessenger();
+  const llm = createFakeLlm({
+    'Gymnastics always needs grip socks': {
+      type: 'rule', rule_text: 'Gymnastics will always need grip socks.', rule_kind: 'prep_association',
+      field: null, match_keyword: 'gymnastics', value: 'bring grip socks', param_name: null, param_value: null,
+    },
+  });
+
+  await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Gymnastics always needs grip socks', externalMessageId: 'wamid.pa1' },
+    { pool, llmExtract: llm.extract, calendar, messenger }
+  );
+  assert.equal((await standingRulesRepo.findActiveByKind({ familyId: family.id, ruleKind: 'prep_association' }, pool)).length, 0, 'not active until confirmed');
+
+  const confirmed = await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: 'yes', externalMessageId: 'wamid.pa2' },
+    { pool, llmExtract: llm.extract, calendar, messenger }
+  );
+  assert.equal(confirmed.outcome, 'rule_confirmed');
+
+  const active = await standingRulesRepo.findActiveByKind({ familyId: family.id, ruleKind: 'prep_association' }, pool);
+  assert.equal(active.length, 1);
+  assert.equal(active[0].match_keyword, 'gymnastics');
+  assert.equal(active[0].value, 'bring grip socks');
 });

@@ -87,6 +87,69 @@ test('a Calendar failure while promoting a needs_time event does not delete the 
   assert.equal(tasksAfter.length, 1, 'the parked placeholder task must survive a failed promotion, not be deleted before the write even succeeded');
 });
 
+// Gap audit: the write path above got 4 dedicated tests for exactly this
+// scenario after being found live — but A1's own read (calendar.listEvents
+// inside handleReadBackQuery) and A2's own search (calendar.listEvents
+// inside handleManagementRequest) never got the equivalent treatment,
+// despite this whole file existing BECAUSE Roy's real report was an A1
+// query hitting this exact error. Both already call calendarErrorReply
+// (confirmed by reading pipeline.js directly, not assumed) — these
+// confirm it end to end, not just that the pure function itself works.
+test('A1 read-back query: a dead token gets the actionable reconnect message, not the generic retry', async () => {
+  const { family, knownSender } = await seedFamily(pool);
+  const calendar = createFakeCalendar();
+  calendar.listEvents = async () => { throw deadTokenError(); };
+  const messenger = createFakeMessenger();
+  const llm = createFakeLlm({
+    "What's on tomorrow?": { type: 'query', date_from: '2026-09-05', date_to: '2026-09-05', person: null },
+  });
+
+  const result = await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: "What's on tomorrow?", externalMessageId: 'wamid.err-a1-1' },
+    { pool, llmExtract: llm.extract, calendar, messenger, calendarConnected: true }
+  );
+
+  assert.equal(result.outcome, 'failed');
+  assert.match(messenger.sent[0].text, /reconnect it from Settings/);
+});
+
+test('A1 read-back query: a transient Calendar hiccup gets the generic retry message, not a raw error', async () => {
+  const { family, knownSender } = await seedFamily(pool);
+  const calendar = createFakeCalendar();
+  calendar.listEvents = async () => { throw new Error('ECONNRESET'); };
+  const messenger = createFakeMessenger();
+  const llm = createFakeLlm({
+    "What's on tomorrow?": { type: 'query', date_from: '2026-09-05', date_to: '2026-09-05', person: null },
+  });
+
+  const result = await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: "What's on tomorrow?", externalMessageId: 'wamid.err-a1-2' },
+    { pool, llmExtract: llm.extract, calendar, messenger, calendarConnected: true }
+  );
+
+  assert.equal(result.outcome, 'failed');
+  assert.match(messenger.sent[0].text, /try again in a bit/);
+  assert.doesNotMatch(messenger.sent[0].text, /ECONNRESET/, 'never leak the raw error to the sender');
+});
+
+test('A2 cancel/reschedule search: a dead token gets the actionable reconnect message', async () => {
+  const { family, knownSender } = await seedFamily(pool);
+  const calendar = createFakeCalendar();
+  calendar.listEvents = async () => { throw deadTokenError(); };
+  const messenger = createFakeMessenger();
+  const llm = createFakeLlm({
+    'Cancel dance class': { type: 'management', management_action: 'cancel', event_description: 'dance class', date_hint: null, new_date: null, new_time: null },
+  });
+
+  const result = await handleIncomingMessage(
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Cancel dance class', externalMessageId: 'wamid.err-a2-1' },
+    { pool, llmExtract: llm.extract, calendar, messenger, calendarConnected: true }
+  );
+
+  assert.equal(result.outcome, 'failed');
+  assert.match(messenger.sent[0].text, /reconnect it from Settings/);
+});
+
 test('a single failing additional_events item is named as failed in the note, without losing the primary write or the other additional items', async () => {
   const { family, knownSender } = await seedFamily(pool);
   const calendar = createFakeCalendar();
