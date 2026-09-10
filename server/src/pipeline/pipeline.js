@@ -11,7 +11,7 @@ import * as tasksRepo from '../repositories/tasks.js';
 import * as botConfigRepo from '../repositories/botConfig.js';
 import * as standingRulesRepo from '../repositories/standingRules.js';
 import { evaluateRules } from '../rules/engine.js';
-import { matchCommand, helpReply, formatTaskList, parseCorrectedTime, parseCorrectedTimeRange, isBareTimeAnswer, bareDisambiguationChoice, isYesNoAnswer } from './commands.js';
+import { matchCommand, helpReply, formatTaskList, parseCorrectedTime, parseCorrectedTimeRange, isBareTimeAnswer, bareDisambiguationChoice, isYesNoAnswer, isCancelIntent } from './commands.js';
 import {
   factsFromCandidate,
   confirmReply,
@@ -27,6 +27,7 @@ import {
   overrideNamedWeekday,
   matchNamedWeekday,
   resolveNamedWeekdayDate,
+  resolveReplyDate,
   overrideExplicitAudienceKeyword,
   applyForwardedSenderDefault,
   matchBarePersonCorrection,
@@ -811,6 +812,37 @@ async function handleCorrection({ log, replyToExtractionLogId, text, calendar, m
     return applyPersonCorrection({ log, original, matchedMember: personMatch, calendar, messenger, senderIdentifier, pool });
   }
 
+  // F1 — a quoted reply is an unambiguous reference to exactly one event,
+  // so "cancel this" / "delete it" / "בטל" here is a direct action on the
+  // quoted item: no LLM call, no A2 description-matching, no
+  // disambiguation. Only for a real written Calendar event or task the
+  // quote points at — anything else falls through to the honest-failure
+  // reply below.
+  if (isCancelIntent(text) && (original.state === 'written' || original.state === 'needs_time') && original.resulting_event_ref) {
+    const ref = original.resulting_event_ref;
+    if (ref.provider === 'google') {
+      await calendar.deleteEvent(ref.external_id);
+    } else if (ref.provider === 'tasks') {
+      await tasksRepo.softDelete(ref.external_id, pool);
+    }
+    await extractionLogRepo.updateState(original.id, { state: 'undone' }, pool);
+    await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+    const reply = `Cancelled — ${original.ai_candidate?.title || 'that'} ✅`;
+    await messenger.send(senderIdentifier, reply);
+    return { outcome: 'cancelled', original, reply, log };
+  }
+
+  // F1 — a quoted reply naming a new day ("move it to Friday", "make it
+  // tomorrow") reschedules the quoted event's date, the same
+  // certain-target way. Reuses the exact deterministic weekday /
+  // today-tomorrow resolution the capture path already trusts over the
+  // LLM's own arithmetic. Composes with a time in the same message ("move
+  // it to Friday 6pm").
+  const newDate = resolveReplyDate(text, todayInTimeZone(timeZone));
+  if (newDate && original.state === 'written' && original.resulting_event_ref?.provider === 'google') {
+    return applyDateReschedule({ log, original, newDate, newTime, calendar, messenger, senderIdentifier, pool, timeZone });
+  }
+
   // Item 9's other half of the same bug report: this fallback used to run
   // unconditionally whenever neither a time nor a person correction
   // applied, sending a confident "Updated — {title} now at {time}" even
@@ -879,6 +911,29 @@ async function applyPersonCorrection({ log, original, matchedMember, calendar, m
   await extractionLogRepo.updateState(original.id, { state: 'corrected', aiCandidate: updatedCandidate }, pool);
   await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
   const reply = `Updated — that's now for ${matchedMember.name} ✅`;
+  await messenger.send(senderIdentifier, reply);
+  return { outcome: 'corrected', original, updatedCandidate, reply, log };
+}
+
+// F1 — reschedules a quoted event to a new day (and optionally a new time
+// in the same reply). End-time handling mirrors calendarPayloadFromCandidate
+// exactly: an explicit stored end_time keeps that same clock end time on
+// the new day (preserving duration, rolling to the next day for an
+// overnight range); otherwise a 1-hour block.
+async function applyDateReschedule({ log, original, newDate, newTime, calendar, messenger, senderIdentifier, pool, timeZone }) {
+  const candidate = original.ai_candidate || {};
+  const time = newTime || candidate.time || '09:00';
+  const updatedCandidate = { ...candidate, date: newDate, time };
+  const end = candidate.end_time
+    ? { date: candidate.end_time <= time ? addDays(newDate, 1) : newDate, time: candidate.end_time }
+    : addOneHour(newDate, time);
+  await calendar.updateEvent(original.resulting_event_ref.external_id, {
+    start: { dateTime: `${newDate}T${time}:00`, timeZone },
+    end: { dateTime: `${end.date}T${end.time}:00`, timeZone },
+  });
+  await extractionLogRepo.updateState(original.id, { state: 'corrected', aiCandidate: updatedCandidate }, pool);
+  await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+  const reply = `Moved — ${updatedCandidate.title || 'that'} to ${newDate}${newTime ? ` ${newTime}` : ''} ✅`;
   await messenger.send(senderIdentifier, reply);
   return { outcome: 'corrected', original, updatedCandidate, reply, log };
 }

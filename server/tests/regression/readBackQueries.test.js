@@ -20,7 +20,7 @@ import { seedFamily } from '../setup/seedFamily.js';
 import { createFakeCalendar, createFakeMessenger, createFakeLlm } from '../setup/fakes.js';
 import { handleIncomingMessage } from '../../src/pipeline/pipeline.js';
 import * as familyMembersRepo from '../../src/repositories/familyMembers.js';
-import { formatQueryReply } from '../../src/pipeline/classify.js';
+import { formatQueryReply, resolveNamedWeekdayDate, todayInTimeZone } from '../../src/pipeline/classify.js';
 import { buildSystemPrompt } from '../../src/integrations/llm.js';
 
 let pool;
@@ -260,6 +260,13 @@ test('full reproduction: "מה יש לי בשלישי" resolves the correct Tues
   const familyMembers = [parent, theo];
   const calendar = createFakeCalendar();
   const messenger = createFakeMessenger();
+  // Every "בשלישי" (Tuesday) in this test — the two captures AND the query —
+  // is deterministically recomputed by classify.js's overrideNamedWeekday
+  // to the SAME real next Tuesday, so compute the expected date that way
+  // too rather than hardcoding it (this test predated the suite-wide fix
+  // for exactly this fragility and was missed).
+  const tuesday = resolveNamedWeekdayDate(todayInTimeZone('UTC'), 2);
+  const wrongDay = resolveNamedWeekdayDate(todayInTimeZone('UTC'), 3); // Wednesday — what the LLM "returned"
   const llm = createFakeLlm({
     'פגישה למומחית תחום שמע בשלישי בשעה 7:30 בבוקר עבורי': {
       title: 'פגישה מומחית תחום שמע', date: '2026-09-08', time: '07:30', person: 'Dana', category: 'appointment',
@@ -270,10 +277,10 @@ test('full reproduction: "מה יש לי בשלישי" resolves the correct Tues
       reminder_requested: false, reminder_datetime: null,
     },
     // The LLM's own weekday arithmetic is deliberately WRONG here (mirrors
-    // the real report — the LLM landed on 2026-09-09, a Wednesday); the
-    // point of this test is that classify.js's deterministic override
-    // corrects it regardless of what the LLM itself returned.
-    'מה יש לי בשלישי': { type: 'query', date_from: '2026-09-09', date_to: '2026-09-09', person: 'Dana' },
+    // the real report — the LLM landed on a Wednesday); the point of this
+    // test is that classify.js's deterministic override corrects it
+    // regardless of what the LLM itself returned.
+    'מה יש לי בשלישי': { type: 'query', date_from: wrongDay, date_to: wrongDay, person: 'Dana' },
   });
 
   await handleIncomingMessage(
@@ -290,11 +297,11 @@ test('full reproduction: "מה יש לי בשלישי" resolves the correct Tues
     { pool, llmExtract: llm.extract, calendar, messenger, familyMembers, calendarConnected: true }
   );
 
-  // Issue 1 — the correct Tuesday (09-08), not the LLM's own wrong
-  // Wednesday (09-09) the fake response deliberately returned.
+  // Issue 1 — the correct Tuesday, not the LLM's own wrong Wednesday the
+  // fake response deliberately returned.
   assert.equal(result.outcome, 'query');
-  assert.match(result.reply, /2026-09-08/);
-  assert.doesNotMatch(result.reply, /2026-09-09/);
+  assert.match(result.reply, new RegExp(tuesday));
+  assert.doesNotMatch(result.reply, new RegExp(wrongDay));
 
   // Issue 2 — scoped to Dana (the sender) only; Theo's soccer must not
   // appear in Dana's own "what do I have" answer.

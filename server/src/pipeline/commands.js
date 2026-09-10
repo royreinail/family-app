@@ -119,6 +119,38 @@ export function isBareTimeAnswer(text) {
   return residue.length === 0;
 }
 
+// F1 (swipe-reply as an explicit context signal) — when a quoted reply's
+// whole content is "cancel this" / "delete it" / "בטל", the quote already
+// tells us WHICH event with certainty, so no LLM call and no A2-style
+// description-matching is needed at all: it's a direct action on the
+// quoted item. Deliberately strict, same "the whole message must reduce
+// to this, minus a small filler vocabulary" shape as isBareTimeAnswer /
+// matchBarePersonCorrection — a genuine new request that merely contains
+// the word "cancel" ("cancel dance class Thursday" as a fresh, unquoted
+// message) still goes through normal A2 handling, not this.
+const CANCEL_WORDS_EN = /\b(cancel|cancelled|canceled|delete|deleted|remove|removed|drop|dropped|scrap|scrapped|nvm|nevermind)\b/gi;
+const CANCEL_FILLER = /\b(this|it|that|the|please|one|event|thing|nvm|never|mind|no|longer|off|call|forget|actually|pls)\b/gi;
+const CANCEL_WORDS_HE = /בטל(י|ו|נו)?|תבטל(י)?|לבטל|מבטל(ת)?|מחק(י|ו)?|תמחק(י)?|למחוק/g;
+const CANCEL_FILLER_HE = /את|זה|זאת|ה?אירוע|בבקשה|כבר|לא|צריך|כבר לא/g;
+export function isCancelIntent(text) {
+  const raw = (text || '').trim();
+  if (!raw) return false;
+  const hasCancelWord = CANCEL_WORDS_EN.test(raw) || CANCEL_WORDS_HE.test(raw);
+  CANCEL_WORDS_EN.lastIndex = 0;
+  CANCEL_WORDS_HE.lastIndex = 0;
+  if (!hasCancelWord) return false;
+  const residue = raw
+    .toLowerCase()
+    .replace(CANCEL_WORDS_EN, ' ')
+    .replace(CANCEL_WORDS_HE, ' ')
+    .replace(CANCEL_FILLER, ' ')
+    .replace(CANCEL_FILLER_HE, ' ')
+    .replace(/[\s,.\-–—:;!?"'()[\]]/g, '');
+  CANCEL_WORDS_EN.lastIndex = 0;
+  CANCEL_WORDS_HE.lastIndex = 0;
+  return residue.length === 0;
+}
+
 // A2 (cancel/reschedule) — resolves a disambiguation prompt ("which one?
 // 1. Dance class 16:00  2. Dance rehearsal 18:00") the same strict way
 // isBareTimeAnswer resolves a "What time?" prompt: the whole message must

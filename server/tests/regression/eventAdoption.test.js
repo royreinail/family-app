@@ -135,15 +135,18 @@ test('a real double-booking against a manually-added event is now flagged (the a
   // A manually-added, untracked event already on the calendar.
   calendar.events.set('manual-2', { title: 'Art class for Mia', startDateTime: '2026-09-08T16:00:00', endDateTime: '2026-09-08T17:00:00' });
 
+  // No weekday name in the text — classify.js's overrideNamedWeekday would
+  // otherwise recompute the date away from the manually-added event's
+  // hardcoded one; this test is about conflict detection, not date math.
   const llm = createFakeLlm({
-    'Piano for Mia Tuesday 4:30pm': {
+    'Piano for Mia at 4:30pm': {
       title: 'Piano', date: '2026-09-08', time: '16:30', end_time: null, person: 'Mia', category: 'activity',
       location: null, recurrence: null, reminder_requested: false, reminder_datetime: null, audience: 'family', activity_icon: '🎹',
     },
   });
 
   const result = await handleIncomingMessage(
-    { familyId: family.id, senderIdentifier: knownSender, text: 'Piano for Mia Tuesday 4:30pm', externalMessageId: 'wamid.adopt2' },
+    { familyId: family.id, senderIdentifier: knownSender, text: 'Piano for Mia at 4:30pm', externalMessageId: 'wamid.adopt2' },
     { pool, llmExtract: llm.extract, calendar, messenger, familyMembers: [parent, mia] }
   );
 

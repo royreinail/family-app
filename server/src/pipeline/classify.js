@@ -728,6 +728,19 @@ export function overrideNamedWeekday(rawInput, candidate, referenceDate) {
   return weekdayIndex === null ? candidate : { ...candidate, date: resolveNamedWeekdayDate(referenceDate, weekdayIndex) };
 }
 
+// F1 (swipe-reply) — the new date a quoted reply names ("move it to
+// Friday", "make it tomorrow"), or null if it names none. Same
+// deterministic today/tomorrow + weekday resolution the capture path
+// already trusts over the LLM's own arithmetic; no LLM call. Returns a
+// plain YYYY-MM-DD string.
+export function resolveReplyDate(rawInput, referenceDate) {
+  const text = (rawInput || '').toLowerCase();
+  if (/\btomorrow\b/.test(text)) return addDays(referenceDate, 1);
+  if (/\btoday\b/.test(text) || /\btonight\b/.test(text)) return referenceDate;
+  const weekdayIndex = matchNamedWeekday(rawInput);
+  return weekdayIndex === null ? null : resolveNamedWeekdayDate(referenceDate, weekdayIndex);
+}
+
 // Fix: reminders firing hours off from the intended time (real bug —
 // "remind me to do the laundry at 22:30 today" arrived at 1:30am for a
 // family in Asia/Jerusalem, UTC+3). `reminder_datetime` from the LLM is a

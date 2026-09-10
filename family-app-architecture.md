@@ -1418,7 +1418,41 @@ assumed covered.
 
 ---
 
-## "Family App" naming inventory (Aug 2026)
+## Enhancement backlog v2 (claude-code-enhancements_1.md) — Group F
+
+Roy handed over an updated backlog. Groups A–E are unchanged and already built/shipped (A1, A2, A3,
+B1, B2, C1, D1, B3, B4, D2 all live; **E1 stays shelved by Roy's own explicit call** — the v2 doc lists
+it in the order but doesn't account for that conversation; E2 stays blocked on multi-parent linking).
+The only genuinely new work is **Group F — Conversational Surface Hardening**, derived from reviewing
+Any.do's WhatsApp bot.
+
+### F1 — Swipe-reply as an explicit context signal (✅ built)
+
+**Most of F1 already existed.** WhatsApp's swipe-to-reply carries `message.context.id`; `webhook.js`
+has always resolved that to `replyToExtractionLogId` and routed to `handleCorrection` with *no LLM
+call* — the quote already identifies the target event with certainty, exactly what F1 asks for. Time
+corrections ("make it 6pm"), person corrections ("actually for Theo"), and needs-time promotions ("8:30"
+answering "what time?") all already worked on a quoted reply. The v2 doc was written from an outside
+review without knowing this was in place.
+
+The real delta: `handleCorrection` only handled *field edits*, not *actions*. Added two, both fully
+deterministic (no LLM):
+- **Cancel** — `commands.js`'s new `isCancelIntent` (strict, whole-message-reduces-to-a-cancel, English
+  + Hebrew, same shape as `isBareTimeAnswer`/`matchBarePersonCorrection`; a fresh unquoted "cancel
+  dance class Thursday" still goes through normal A2, not this). On a quoted written event or
+  needs-time task → deletes the real Calendar event / soft-deletes the task, retires the log
+  (`'undone'`), replies "Cancelled — {title} ✅".
+- **Date reschedule** — `classify.js`'s new `resolveReplyDate` (today/tomorrow/tonight + any weekday
+  name, reusing the exact deterministic resolution the capture path already trusts over the LLM). A
+  quoted reply naming a new day ("move it to Friday", "make it tomorrow 6pm") reschedules the event's
+  date, composing with a time in the same reply, end-time handling mirroring
+  `calendarPayloadFromCandidate` exactly (explicit stored `end_time` keeps its clock time on the new
+  day, preserving duration; otherwise a 1-hour block).
+
+`tests/regression/swipeReply.test.js` (8 tests): `isCancelIntent` strictness both languages,
+`resolveReplyDate`, and each action end-to-end through a quoted reply — including asserting the LLM is
+never called, Hebrew "בטל", combined day+time, time-only still routing through the pre-existing path,
+and cancel on a date-only task hitting the task not the calendar. Full suite: 221/221 passing.
 
 Every place the literal product name "Family App" appears, so a future rename has a checklist instead of
 a fresh grep each time. Found via `grep -rniI "family app|familyapp|family-app|family_app"` across the
