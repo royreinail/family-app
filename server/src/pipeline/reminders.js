@@ -46,16 +46,18 @@ export async function scheduleReminder({ familyId, title, reminderDatetime, time
 // Called on an interval (see server.js) or directly by a test. Sends any
 // reminder whose time has arrived and hasn't fired yet, now as an
 // ACTIONABLE message (F2) — reminderMessage.js's composeReminderMessage is
-// the single source of truth for its structure; sent via the one approved
-// button template (`messenger.sendReminderButtonTemplate`), unconditionally
-// — no free-form-first fork (Roy's call, once the template was approved:
-// see messenger.js's own comment for why keeping a second path stopped
-// being worth it). Stores the real WhatsApp message id the send comes back
-// with, so a later reply's `context.id` can be matched straight back to
-// this task (see webhook.js's own reminder-reply routing). `sendTo` falls
-// back to the originating extraction_log's sender for any reminder created
-// before this column existed — self-healing, not a hard migration
-// requirement.
+// the single source of truth for its structure; sent via the free-form
+// interactive path first (messenger.sendReminderButtons), which is
+// currently free and falls back internally to the approved button
+// template only when it's genuinely needed (outside the 24h window — see
+// messenger.js's own cost note for why the template stays the fallback,
+// not the primary, even now that it's approved). Stores the real WhatsApp
+// message id whichever path actually sent it comes back with, so a later
+// reply's `context.id` can be matched straight back to this task (see
+// webhook.js's own reminder-reply routing) regardless of which path
+// delivered it. `sendTo` falls back to the originating extraction_log's
+// sender for any reminder created before this column existed —
+// self-healing, not a hard migration requirement.
 export async function sweepDueReminders({ pool, messenger }) {
   const due = await tasksRepo.findDueReminders(pool);
   for (const task of due) {
@@ -66,7 +68,7 @@ export async function sweepDueReminders({ pool, messenger }) {
     }
     if (sendTo) {
       const composed = composeReminderMessage(task);
-      const result = await messenger.sendReminderButtonTemplate(sendTo, composed);
+      const result = await messenger.sendReminderButtons(sendTo, composed);
       const messageId = result?.messages?.[0]?.id;
       if (messageId) await tasksRepo.setReminderMessageId(task.id, messageId, pool);
     }

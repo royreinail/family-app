@@ -1461,59 +1461,64 @@ Snooze to push it back, or Reschedule to move the underlying calendar event — 
 just typing the word, whichever the sender prefers.
 
 **Real button count vs. the doc.** The backlog sketched three buttons (Done/Snooze/Reschedule). Roy's
-own live WhatsApp template edit only added two — Done and Snooze. Rather than assume, queried Meta's
-Graph API directly (`GET /{waba-id}/message_templates?name=reminder_notification`) and confirmed: at
-build time the template was still **PENDING** review (Roy believed it was already live — it wasn't
-yet); re-verified the same way after Roy reported it active and it now shows **APPROVED** (id
-`4422763491370778`), with exactly 2 `QUICK_REPLY` buttons titled "Done"/"Snooze", matching what was
-built. `WHATSAPP_REMINDER_TEMPLATE_NAME`/`_LANGUAGE`/`_PARAM_NAME` are unset in Railway, so
-`messenger.js`'s own defaults apply (`reminder_notification` / `en_US` / `reminder_text`) — checked
-against the approved template's actual name/language/body-param name and they match, so it needs no
-config change to work. Reschedule stays a fully-supported action even with no button for it — always a
-text reply ("reschedule", or one-shot "reschedule to Saturday 10am").
+own live WhatsApp template edit only added two — Done and Snooze. Queried Meta's Graph API directly
+(`GET /{waba-id}/message_templates?name=reminder_notification`) rather than assume, and confirmed it:
+exactly 2 `QUICK_REPLY` buttons titled "Done"/"Snooze", matching what was built. Reschedule stays a
+fully-supported action even with no button for it — always a text reply ("reschedule", or one-shot
+"reschedule to Saturday 10am").
 
-**Category: shifted UTILITY → MARKETING when the buttons were added — likely mis-classified, appeal
-pending.** The template's `previous_category` field confirms it was originally approved as UTILITY;
-adding the two buttons triggered Meta's automatic reclassification to MARKETING. **Confirmed this is a
-real cost, not just a label**: since WhatsApp's July 2025 pricing overhaul, MARKETING-category
-messages are billed per delivery with no free-conversation-window exemption at all, and run roughly
-2–3× a UTILITY message's per-country rate (e.g. ~$0.025/message in the US). Checked Meta's own
-categorization criteria for what triggers a MARKETING reclassification — promotional language, a
-call-to-action toward a purchase, or a button linking to a promotional/sales page — and this template's
-buttons (`Done`/`Snooze`, plain `QUICK_REPLY` payload triggers, no links, no promotional copy in the
-body) don't match any of those documented triggers. Reads as a probably-incorrect automatic
-classification, and Meta's own process allows appealing it (WhatsApp Manager → Message Templates →
-"Review category updates," within 60 days of the change, typically a 1–3 business day turnaround) —
-**this is a Roy-side action** (needs his WhatsApp Manager login), tracked here as a follow-up, not
-something fixable from the codebase.
+**Template status: APPROVED, but reclassified UTILITY → MARKETING, likely incorrectly — appeal
+pending.** Re-verified against Meta's API (id `4422763491370778`) after Roy reported it active — it is
+genuinely approved (it was still PENDING earlier in the build; Roy believed it was already live at that
+point, it wasn't yet). Its `previous_category` field confirms it started as UTILITY; adding the two
+buttons triggered an automatic reclassification to MARKETING. **Confirmed this is a real cost, not just
+a label** (Roy asked specifically): since WhatsApp's July 2025 pricing overhaul, MARKETING-category
+template messages are billed per delivery with no free-conversation-window exemption, roughly 2–3× a
+UTILITY message's per-country rate. **Also double-checked the classification itself** (Roy asked this
+too, since it looked odd given the same body text was previously approved as UTILITY): Meta's own
+documented MARKETING triggers are promotional language, a call-to-action toward a purchase, or buttons
+linking to a promotional/sales page — this template's buttons are plain `QUICK_REPLY` payload triggers
+with no links and no promotional body copy, matching none of those. Reads as a probably-incorrect
+automatic classification; Meta allows appealing it within 60 days (WhatsApp Manager → Message Templates
+→ "Review category updates," ~1–3 business days) — **a Roy-side action** (needs his login), tracked
+here as a follow-up.
 
-**Delivery: one path only, unconditionally — no free-form-first fork.** Originally built with a
-free-form-interactive-first / approved-template-fallback split (free-form needs no template approval
-and works inside the 24h customer-service window; the template was the fallback for outside it, via the
-same 131047 re-engagement error the plain-text reminder send already handles). **Roy's call, after
-live-testing and once the template was actually approved: drop the fork.** `sweepDueReminders`
-(`reminders.js`) now sends every reminder via `messenger.sendReminderButtonTemplate` unconditionally;
-`sendReminderButtons` (the free-form path) and its pure builder `buildInteractiveButtonsPayload` were
-removed outright, not left dormant. Two real reasons this holds up, not just "simpler code": (1) the
-template works identically inside or outside the window, so the fork bought no actual capability, only
-a second wire shape and a race on which path a given reply's button-tap shape would come back as; (2)
-Meta's pricing overhaul removes the free-inside-window exemption for both service messages and utility
-templates starting **October 1, 2026** — so even the cost argument for keeping the free-form path
-narrows to nothing at this app's real (personal-family, low-volume) traffic once that lands, and
-narrows further still once the MARKETING→UTILITY appeal above lands. `webhook.js`'s
-`resolveButtonReply` was simplified the same way — it only recognizes the template's own tapped-button
-shape (`message.type === 'button'`) now, the `interactive.button_reply` branch having gone dead the
-moment the free-form path did.
+`WHATSAPP_REMINDER_TEMPLATE_NAME`/`_LANGUAGE`/`_PARAM_NAME` are unset in Railway, so `messenger.js`'s
+own defaults apply (`reminder_notification` / `en_US` / `reminder_text`) — checked against the approved
+template's actual name/language/body-param name and they match, so no config change is needed for the
+template path to work.
 
-**Single source of truth for the message.** `reminderMessage.js` (new) owns the reminder's structure —
-`composeReminderMessage(task)` returns `{innerText, bodyText, buttons}` — and the one delivery adapter
-is a thin wrapper around it, never inventing its own copy or button set.
+**Delivery: free-form interactive first (free), approved template as fallback (paid) — deliberately
+NOT collapsed to one path, by Roy's explicit call.** `sweepDueReminders` (`reminders.js`) sends via
+`messenger.sendReminderButtons` first — a free-form interactive message, currently free and needing no
+template approval, which is what most reminders actually use in practice. The template path
+(`sendReminderButtonTemplate`) is kept strictly as the fallback for when a reminder falls outside the
+24h window (error 131047, same re-engagement pattern the plain-text reminder send already handles) —
+this was briefly simplified to "just always send the template" for code-simplicity reasons, then
+reverted once the MARKETING billing was confirmed: since the template is billed per send and the
+free-form path isn't, defaulting every reminder through the paid path would cost real money for zero
+functional benefit on this app's actual (personal-family) traffic. **Revisit once Meta's Oct 1 2026
+pricing change** removes the free-inside-window exemption for both service messages and utility
+templates — at that point the cost argument for the two-path split narrows to nothing and collapsing
+back to one path (as was tried, and is one `git revert` away) becomes the right call again.
 
-**Routing a reply back to the right task.** `sweepDueReminders` stores the real WhatsApp message id the
-send comes back with (`tasksRepo.setReminderMessageId`). `webhook.js` resolves an incoming reply's
-`context.id` against *both* `extraction_log` (existing F1/A2 quote-reply routing) and, when that misses,
-`tasksRepo.findByReminderMessageId` — mutually exclusive by construction, since a reminder's own wamid
-was never something the bot *received*. A tapped button resolves through `resolveButtonReply(message)`.
+**Same look and feel enforced, not just intended** (Roy's explicit requirement: a user must not be
+able to tell which path delivered a given reminder). Both send functions build their wire body only
+through the pure builders `buildInteractiveButtonsPayload`/`buildReminderTemplatePayload` in
+`messenger.js` — neither invents its own shape. Both take the exact same input:
+`reminderMessage.js`'s `composeReminderMessage(task)`, the single source of truth for the reminder's
+copy and button set. `tests/regression/actionableReminders.test.js` asserts both payloads resolve to
+the identical button id/title set for the same input, so a future edit to either builder that drifts
+the two apart fails a test, not just a hope.
+
+**Routing a reply back to the right task.** `sweepDueReminders` stores the real WhatsApp message id
+whichever path actually sent it comes back with (`tasksRepo.setReminderMessageId`). `webhook.js`
+resolves an incoming reply's `context.id` against *both* `extraction_log` (existing F1/A2 quote-reply
+routing) and, when that misses, `tasksRepo.findByReminderMessageId` — mutually exclusive by
+construction, since a reminder's own wamid was never something the bot *received*. A tapped button
+(either delivery shape — `interactive.button_reply` or the template's `button.payload`) resolves
+through `resolveButtonReply(message)`, so `handleReminderAction` never has to know or care which path
+delivered the reminder being replied to.
 
 **The three actions**, all in `pipeline.js`'s new `handleReminderAction`:
 - **Done** — `tasksRepo.markDone`, clears any pending action, honest reply naming the task.
@@ -1558,10 +1563,10 @@ pending-action lookup skip a source-log join for reminders created after this sh
 a fallback lookup for older rows).
 
 `tests/regression/actionableReminders.test.js` (16 tests): `composeReminderMessage`'s fixed copy and
-button set; `buildReminderTemplatePayload`'s wire shape (right button ids/payloads, matches the live
-2-button template); `resolveButtonReply`; the loosened matchers (bare AND trigger-plus-target, both
-languages, and that they don't fire mid-sentence); `parseSnoozeDuration`'s phrase table; and full
-end-to-end coverage through `handleIncomingMessage` — Done via button and via a quoted typed reply, Snooze inline (button and typed)
+button set; the free-form-vs-template payload-parity requirement itself; `resolveButtonReply` for both
+delivery shapes; the loosened matchers (bare AND trigger-plus-target, both languages, and that they
+don't fire mid-sentence); `parseSnoozeDuration`'s phrase table; and full end-to-end coverage through
+`handleIncomingMessage` — Done via button and via a quoted typed reply, Snooze inline (button and typed)
 and two-step ask-then-answer, Reschedule inline (typed, tied to a real event), two-step ask-then-answer,
 declined gracefully with no underlying event, an unrecognized reply's honest failure, and a genuinely
 new unrelated message confirmed NOT swallowed as a reminder reply. Full suite: 237/237 passing.
