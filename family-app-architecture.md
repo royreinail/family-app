@@ -1462,22 +1462,29 @@ just typing the word, whichever the sender prefers.
 
 **Real button count vs. the doc.** The backlog sketched three buttons (Done/Snooze/Reschedule). Roy's
 own live WhatsApp template edit only added two — Done and Snooze. Rather than assume, queried Meta's
-Graph API directly (`GET /{waba-id}/message_templates?name=reminder_notification`) and confirmed: the
-template was still **PENDING** review (not live yet, contrary to what Roy believed when he flagged it),
-its category had shifted **UTILITY → MARKETING** once buttons were added (worth knowing — marketing
-messages count against Meta's per-user marketing-message limits and pricing differently than utility
-ones), and it carries exactly 2 `QUICK_REPLY` buttons titled "Done"/"Snooze". Built around that reality:
-Reschedule stays a fully-supported action, just never a tap target — always a text reply ("reschedule",
-or one-shot "reschedule to Saturday 10am"). This is what lets the backlog's own explicit requirement
-("both delivery paths must render identically") hold: both paths render the *same* two buttons.
+Graph API directly (`GET /{waba-id}/message_templates?name=reminder_notification`) and confirmed: at
+build time the template was still **PENDING** review (Roy believed it was already live — it wasn't
+yet); re-verified the same way after Roy reported it active and it now shows **APPROVED** (id
+`4422763491370778`), with its category shifted **UTILITY → MARKETING** once buttons were added (worth
+knowing — marketing messages count against Meta's per-user marketing-message limits and pricing
+differently than utility ones), and exactly 2 `QUICK_REPLY` buttons titled "Done"/"Snooze", matching
+what was built. `WHATSAPP_REMINDER_TEMPLATE_NAME`/`_LANGUAGE`/`_PARAM_NAME` are unset in Railway, so
+`messenger.js`'s own defaults apply (`reminder_notification` / `en_US` / `reminder_text`) — checked
+against the approved template's actual name/language/body-param name and they match, so the template
+fallback path needs no config change to work. Built around the real 2-button set regardless of approval
+status: Reschedule stays a fully-supported action, just never a tap target — always a text reply
+("reschedule", or one-shot "reschedule to Saturday 10am"). This is what lets the backlog's own explicit
+requirement ("both delivery paths must render identically") hold: both paths render the *same* two
+buttons.
 
-**Delivery: free-form interactive now, approved template later.** `sweepDueReminders` (`reminders.js`)
-sends via `messenger.sendReminderButtons` first — a free-form interactive message, which needs no
-template approval and works immediately inside the 24h customer-service window. So reminders are
-already actionable today, in production, regardless of the template's PENDING status — the template
-path (`sendReminderButtonTemplate`) only matters once a reply falls outside that 24h window (error
-131047, same re-engagement fallback the plain-text reminder send already had) or once Meta approves the
-button edit, whichever comes first. `messenger.js` now exports pure builders
+**Delivery: free-form interactive first, approved template as fallback.** `sweepDueReminders`
+(`reminders.js`) sends via `messenger.sendReminderButtons` first — a free-form interactive message,
+which needs no template approval and works immediately inside the 24h customer-service window. So most
+reminders are delivered this way regardless of template status — the template path
+(`sendReminderButtonTemplate`), now itself APPROVED and usable, only matters once a reminder falls
+outside that 24h window (error 131047, same re-engagement fallback the plain-text reminder send already
+had), which is exactly the case it exists for. Now that the template is approved, that fallback path is
+live end-to-end rather than a known-failing gap. `messenger.js` exports pure builders
 (`buildInteractiveButtonsPayload`/`buildReminderTemplatePayload`), extracted specifically so the "same
 button set on both paths" claim is a real, checked test and not just a comment.
 
