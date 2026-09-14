@@ -75,19 +75,15 @@ export function createFakeMessenger() {
       sent.push({ to, text, id });
       return { ok: true, messages: [{ id }] };
     },
-    // F2 (actionable reminders) — the free-form interactive path
-    // sweepDueReminders actually calls. Records the same rendered body
-    // text plain `send` does (so a test asserting `.text` still reads the
-    // real content) plus the button set and a real-shaped message id, since
-    // that id is what reminder-reply routing keys off of.
-    sendReminderButtons: async (to, composed) => {
-      const id = nextId();
-      sent.push({ to, text: composed.bodyText, buttons: composed.buttons, id });
-      return { ok: true, messages: [{ id }] };
-    },
+    // F2 (actionable reminders) — the one path sweepDueReminders calls
+    // (see messenger.js/reminders.js: no free-form-first fork anymore).
+    // Records the same rendered body text plain `send` does (so a test
+    // asserting `.text` still reads the real content) plus the button set
+    // and a real-shaped message id, since that id is what reminder-reply
+    // routing keys off of.
     sendReminderButtonTemplate: async (to, composed) => {
       const id = nextId();
-      sent.push({ to, text: composed.bodyText, buttons: composed.buttons, id, viaTemplate: true });
+      sent.push({ to, text: composed.bodyText, buttons: composed.buttons, id });
       return { ok: true, messages: [{ id }] };
     },
   };

@@ -9,8 +9,13 @@
 // Roy's live template edit added exactly two quick-reply buttons — "Done"
 // and "Snooze" — not the three the original doc sketched. Reschedule
 // stays a real, supported action, just via a plain text reply
-// ("reschedule to Friday"), never a tap-target, so the free-form and
-// template paths render the identical two-button set.
+// ("reschedule to Friday"), never a tap-target.
+//
+// Delivery is a single path — the approved button template, sent
+// unconditionally, no free-form-interactive-first fork (Roy's call once
+// the template was approved: see messenger.js's own comment for the
+// reasoning). There used to be a second delivery shape and a "both
+// renderers match" test here; removed along with the fork itself.
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -23,7 +28,7 @@ import { sweepDueReminders } from '../../src/pipeline/reminders.js';
 import * as tasksRepo from '../../src/repositories/tasks.js';
 import * as extractionLogRepo from '../../src/repositories/extractionLog.js';
 import { composeReminderMessage, REMINDER_BUTTONS, reminderBodyText } from '../../src/pipeline/reminderMessage.js';
-import { buildInteractiveButtonsPayload, buildReminderTemplatePayload } from '../../src/integrations/messenger.js';
+import { buildReminderTemplatePayload } from '../../src/integrations/messenger.js';
 import { isDoneReply, isSnoozeReply, isRescheduleReply, parseSnoozeDuration } from '../../src/pipeline/commands.js';
 import { todayInTimeZone, addDays, localDateTimeToUtcIso, resolveNamedWeekdayDate } from '../../src/pipeline/classify.js';
 import { resolveButtonReply } from '../../src/routes/webhook.js';
@@ -42,28 +47,19 @@ test('composeReminderMessage: wraps the title with the approved template\'s exac
   assert.equal(reminderBodyText('X'), '⏰ X — sent by your Family App assistant.');
 });
 
-// The backlog's own explicit requirement: "Add a test asserting both
-// renderers produce the same button set and labels for the same reminder
-// record."
-test('the free-form interactive path and the approved-template path render the identical button set and labels', () => {
+test('buildReminderTemplatePayload: the wire shape carries the right button ids/payloads and matches the live template\'s real two-button edit', () => {
   const composed = composeReminderMessage({ title: 'Reminder: call the dentist' });
-  const interactivePayload = buildInteractiveButtonsPayload('15551234567', composed);
-  const templatePayload = buildReminderTemplatePayload('15551234567', composed);
+  const payload = buildReminderTemplatePayload('15551234567', composed);
 
-  const interactiveButtons = interactivePayload.interactive.action.buttons.map((b) => ({ id: b.reply.id, title: b.reply.title }));
-  const templateButtons = templatePayload.template.components
-    .filter((c) => c.type === 'button')
-    .map((c, i) => ({ id: c.parameters[0].payload, title: REMINDER_BUTTONS[i].title })); // the template's own button LABELS are Meta-approved fixed text, not resent — same ids/order is what has to match
-
-  assert.deepEqual(interactiveButtons, templateButtons);
-  assert.equal(interactivePayload.interactive.action.buttons.length, 2, 'matches the live template\'s real two-button edit, not the doc\'s original three');
+  const buttonComponents = payload.template.components.filter((c) => c.type === 'button');
+  assert.equal(buttonComponents.length, 2, 'matches the live template\'s real two-button edit, not the doc\'s original three');
+  assert.deepEqual(
+    buttonComponents.map((c) => c.parameters[0].payload),
+    REMINDER_BUTTONS.map((b) => b.id)
+  );
 });
 
-test('resolveButtonReply: both delivery shapes (free-form interactive and template quick-reply) resolve to the same {id, title}', () => {
-  assert.deepEqual(
-    resolveButtonReply({ type: 'interactive', interactive: { type: 'button_reply', button_reply: { id: 'reminder_done', title: 'Done' } } }),
-    { id: 'reminder_done', title: 'Done' }
-  );
+test('resolveButtonReply: a tapped template quick-reply resolves to {id, title}; anything else resolves to null', () => {
   assert.deepEqual(
     resolveButtonReply({ type: 'button', button: { payload: 'reminder_snooze', text: 'Snooze' } }),
     { id: 'reminder_snooze', title: 'Snooze' }

@@ -58,20 +58,16 @@ export function resolveAudioMediaRef(message) {
   return null;
 }
 
-// F2 (actionable reminders) — a tapped button's payload, whichever of the
-// two delivery shapes it came back as: a free-form interactive reply
-// (`message.type === 'interactive'`, `.interactive.button_reply`) or an
-// approved-template quick-reply (`message.type === 'button'`,
-// `.button.payload`). Both carry the SAME `id`s reminderMessage.js's
-// REMINDER_BUTTONS defined ('reminder_done'/'reminder_snooze') regardless
-// of which path sent the original message — pipeline.js's
-// handleReminderAction doesn't need to know or care which one this is.
-// Pure and exported for the same reason resolveImageMediaRef/
-// resolveAudioMediaRef are.
+// F2 (actionable reminders) — a tapped Done/Snooze button's payload.
+// Reminders now send via exactly one delivery path (the approved
+// button template — see messenger.js's own comment for why the earlier
+// free-form-interactive fork was dropped), so this only ever needs to
+// recognize the one wire shape WhatsApp sends back for a template
+// quick-reply tap: `message.type === 'button'`, `.button.payload`/`.text`.
+// The `id` is one of reminderMessage.js's REMINDER_BUTTONS ids
+// ('reminder_done'/'reminder_snooze'). Pure and exported for the same
+// reason resolveImageMediaRef/resolveAudioMediaRef are.
 export function resolveButtonReply(message) {
-  if (message?.type === 'interactive' && message.interactive?.type === 'button_reply') {
-    return { id: message.interactive.button_reply.id, title: message.interactive.button_reply.title };
-  }
   if (message?.type === 'button' && message.button?.payload) {
     return { id: message.button.payload, title: message.button.text };
   }
