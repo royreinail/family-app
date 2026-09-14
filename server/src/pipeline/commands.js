@@ -1,6 +1,7 @@
 // Hardcoded system commands — matched by cheap string/regex BEFORE the LLM
 // is ever called. Deliberately NOT in the rules table: fixed system
 // behavior ("undo" always means undo), not tunable per-family business policy.
+import { todayInTimeZone, addDays, localDateTimeToUtcIso } from './classify.js';
 const HELP_TEXT =
   "Here's what I understand:\n" +
   '• Forward a message, photo, or email — I\'ll try to add it to the calendar or tasks.\n' +
@@ -164,4 +165,70 @@ export function bareDisambiguationChoice(text) {
   if (!match) return null;
   const n = parseInt(match[1], 10);
   return n >= 1 ? n : null;
+}
+
+// -- F2 (actionable reminders) ------------------------------------------------
+// A reply to a bot-initiated reminder (a tapped button's payload, OR a
+// plain typed word — not everyone taps) resolves to one of three actions.
+// Closed word lists, same "the whole message must reduce to this" strict
+// philosophy as isYesNoAnswer — a real new message that happens to contain
+// "done" somewhere must still go through normal extraction, not get
+// swallowed as a reminder action.
+const DONE_WORDS = new Set(['done', 'did it', 'complete', 'completed', 'finished', 'mark done', 'mark as done', 'בוצע', 'סיימתי', 'עשיתי']);
+const SNOOZE_WORDS = new Set(['snooze', 'later', 'remind me later', 'not now', 'דחה', 'דחי', 'לא עכשיו']);
+const RESCHEDULE_WORDS = new Set(['reschedule', 'move it', 'change the time', 'תזיז', 'תזוזי', 'שנה מועד']);
+
+function bareWordMatch(text, set) {
+  const raw = (text || '').trim().toLowerCase().replace(/[.!?]+$/, '');
+  return set.has(raw);
+}
+// Snooze/Reschedule, unlike Done, can legitimately carry a target in the
+// SAME reply ("snooze in an hour", "reschedule to Saturday 10am") —
+// handleReminderAction's own branches already parse that inline target
+// (parseSnoozeDuration / resolveReplyDate+parseCorrectedTime) when it's
+// there. A strict bareWordMatch would reject the trigger itself the moment
+// any target text follows it, making that inline case unreachable except
+// via a button tap — a real gap, since Reschedule has no button at all
+// (the live template only has Done/Snooze). Loosened to "starts with the
+// trigger phrase" instead: still a closed, fixed vocabulary (never checked
+// against a general incoming message — only ever reached from an
+// already-routed reminder reply, quoted or parked), just no longer
+// requiring the rest of the message to be empty.
+function looseWordMatch(text, set) {
+  const raw = (text || '').trim().toLowerCase();
+  if (!raw) return false;
+  for (const phrase of set) {
+    if (raw === phrase || raw.startsWith(`${phrase} `)) return true;
+  }
+  return false;
+}
+export const isDoneReply = (text) => bareWordMatch(text, DONE_WORDS);
+export const isSnoozeReply = (text) => looseWordMatch(text, SNOOZE_WORDS);
+export const isRescheduleReply = (text) => looseWordMatch(text, RESCHEDULE_WORDS);
+
+// A snooze duration ("in an hour", "tomorrow morning", "next week") ->
+// a real UTC instant, or null if the text names no recognizable duration.
+// Deliberately a short, fixed phrase table, not a general NLP date parser
+// — same "narrow, not a general parser" scope as parseCorrectedTime.
+export function parseSnoozeDuration(text, nowUtcIso, timeZone = 'UTC') {
+  const raw = (text || '').trim().toLowerCase();
+  const now = new Date(nowUtcIso).getTime();
+
+  const hoursMatch = raw.match(/\bin\s+(an?|\d+)\s*hours?\b/);
+  if (hoursMatch) {
+    const n = /^an?$/.test(hoursMatch[1]) ? 1 : parseInt(hoursMatch[1], 10);
+    return new Date(now + n * 60 * 60 * 1000).toISOString();
+  }
+  const minutesMatch = raw.match(/\bin\s+(\d+)\s*min(?:ute)?s?\b/);
+  if (minutesMatch) return new Date(now + parseInt(minutesMatch[1], 10) * 60 * 1000).toISOString();
+
+  const today = todayInTimeZone(timeZone);
+  if (/\btomorrow morning\b/.test(raw)) return localDateTimeToUtcIso(addDays(today, 1), '09:00', timeZone);
+  if (/\btomorrow\b/.test(raw)) return new Date(now + 24 * 60 * 60 * 1000).toISOString();
+  if (/\btonight\b/.test(raw)) {
+    const tonight = localDateTimeToUtcIso(today, '20:00', timeZone);
+    return new Date(tonight).getTime() > now ? tonight : localDateTimeToUtcIso(addDays(today, 1), '20:00', timeZone);
+  }
+  if (/\bnext week\b/.test(raw)) return new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString();
+  return null;
 }

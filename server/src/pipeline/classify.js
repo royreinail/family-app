@@ -549,6 +549,16 @@ export function nowTimeInTimeZone(timeZone = 'UTC') {
   return new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
 }
 
+// F2 (actionable reminders) — a real UTC instant (e.g. a snooze target)
+// formatted as a short local "DD/MM HH:MM" for a confirmation reply. Pure
+// display only, not used for any date/time arithmetic — same Intl
+// double-formatting approach as todayInTimeZone/nowTimeInTimeZone, no
+// timezone library needed.
+export function formatLocalDateTime(utcIso, timeZone = 'UTC') {
+  const fmt = new Intl.DateTimeFormat('en-GB', { timeZone, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+  return fmt.format(new Date(utcIso));
+}
+
 // D1 — pure decision of whether a family's daily briefing should fire on
 // this sweep tick. Never sent yet today (by the family's own local date)
 // AND the local clock has reached (not necessarily exactly equals) the

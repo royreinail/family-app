@@ -43,10 +43,15 @@ test('sends a reminder whose time has arrived, to the sender who originally aske
   assert.equal(sent.length, 1);
   assert.equal(messenger.sent.length, 1);
   assert.equal(messenger.sent[0].to, knownSender);
-  assert.equal(messenger.sent[0].text, 'Reminder: pick up the dry cleaning');
+  // F2 — delivered as the actionable message (composeReminderMessage's
+  // wrapped body + Done/Snooze buttons), not the raw title.
+  assert.equal(messenger.sent[0].text, '⏰ Reminder: pick up the dry cleaning — sent by your Family App assistant.');
+  assert.deepEqual(messenger.sent[0].buttons, [{ id: 'reminder_done', title: 'Done' }, { id: 'reminder_snooze', title: 'Snooze' }]);
 
   const after = await tasksRepo.findAllForFamily(family.id, pool);
-  assert.ok(after.find((t) => t.id === task.id).reminder_sent_at, 'must be marked sent so it never fires twice');
+  const updated = after.find((t) => t.id === task.id);
+  assert.ok(updated.reminder_sent_at, 'must be marked sent so it never fires twice');
+  assert.equal(updated.reminder_message_id, messenger.sent[0].id, 'stored so a reply\'s context.id can be matched back to this task');
 });
 
 test('a reminder whose time has not arrived yet is left alone entirely', async () => {

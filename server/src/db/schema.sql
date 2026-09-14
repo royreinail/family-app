@@ -150,6 +150,19 @@ create table if not exists tasks (
   constraint tasks_importance_check check (importance in ('High','Med','Low')),
   constraint tasks_status_check check (status in ('pending','done'))
 );
+-- F2 (actionable reminders, enhancement backlog v2): a fired reminder
+-- message can be replied to (Done / Snooze / Reschedule). Idempotent
+-- ALTERs so they apply to the already-deployed table, same pattern as
+-- families.invite_code / standing_rules' constraint widening.
+--   reminder_message_id       — the WhatsApp wamid of the reminder message the bot sent, so an
+--                               incoming reply's message.context.id can be matched back to this task
+--   reminder_pending_action   — null | 'snooze' | 'reschedule', the parked follow-up step after the
+--                               user tapped a button/said the word but hasn't yet given the "until when"
+--   reminder_sender_identifier — who the reminder is for (denormalized from the source message's
+--                               sender), so both the sweep and the pending-action lookup are one-table
+alter table tasks add column if not exists reminder_message_id text;
+alter table tasks add column if not exists reminder_pending_action text;
+alter table tasks add column if not exists reminder_sender_identifier text;
 
 -- One table, one evaluator (evaluateRules). `name` is an additive column
 -- (not spelled out in the architecture doc's column list) so acceptance

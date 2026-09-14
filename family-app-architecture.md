@@ -1454,6 +1454,99 @@ deterministic (no LLM):
 never called, Hebrew "בטל", combined day+time, time-only still routing through the pre-existing path,
 and cancel on a date-only task hitting the task not the calendar. Full suite: 221/221 passing.
 
+### F2 — Actionable reminders (Done / Snooze / Reschedule) (✅ built)
+
+A fired reminder used to be a dead-end text message. It's now actionable: reply Done to close it out,
+Snooze to push it back, or Reschedule to move the underlying calendar event — by tapping a button or
+just typing the word, whichever the sender prefers.
+
+**Real button count vs. the doc.** The backlog sketched three buttons (Done/Snooze/Reschedule). Roy's
+own live WhatsApp template edit only added two — Done and Snooze. Rather than assume, queried Meta's
+Graph API directly (`GET /{waba-id}/message_templates?name=reminder_notification`) and confirmed: the
+template was still **PENDING** review (not live yet, contrary to what Roy believed when he flagged it),
+its category had shifted **UTILITY → MARKETING** once buttons were added (worth knowing — marketing
+messages count against Meta's per-user marketing-message limits and pricing differently than utility
+ones), and it carries exactly 2 `QUICK_REPLY` buttons titled "Done"/"Snooze". Built around that reality:
+Reschedule stays a fully-supported action, just never a tap target — always a text reply ("reschedule",
+or one-shot "reschedule to Saturday 10am"). This is what lets the backlog's own explicit requirement
+("both delivery paths must render identically") hold: both paths render the *same* two buttons.
+
+**Delivery: free-form interactive now, approved template later.** `sweepDueReminders` (`reminders.js`)
+sends via `messenger.sendReminderButtons` first — a free-form interactive message, which needs no
+template approval and works immediately inside the 24h customer-service window. So reminders are
+already actionable today, in production, regardless of the template's PENDING status — the template
+path (`sendReminderButtonTemplate`) only matters once a reply falls outside that 24h window (error
+131047, same re-engagement fallback the plain-text reminder send already had) or once Meta approves the
+button edit, whichever comes first. `messenger.js` now exports pure builders
+(`buildInteractiveButtonsPayload`/`buildReminderTemplatePayload`), extracted specifically so the "same
+button set on both paths" claim is a real, checked test and not just a comment.
+
+**Single source of truth for the message.** `reminderMessage.js` (new) owns the reminder's structure —
+`composeReminderMessage(task)` returns `{innerText, bodyText, buttons}` — and both delivery adapters are
+thin wrappers around it, never inventing their own copy or button set.
+
+**Routing a reply back to the right task.** `sweepDueReminders` now stores the real WhatsApp message id
+it gets back (`tasksRepo.setReminderMessageId`). `webhook.js` resolves an incoming reply's
+`context.id` against *both* `extraction_log` (existing F1/A2 quote-reply routing) and, when that misses,
+`tasksRepo.findByReminderMessageId` — mutually exclusive by construction, since a reminder's own wamid
+was never something the bot *received*. A tapped button (either delivery shape —
+`interactive.button_reply` or the template's `button.payload`) resolves through the new
+`resolveButtonReply(message)`, so `handleReminderAction` never has to know which delivery path a given
+reply came from.
+
+**The three actions**, all in `pipeline.js`'s new `handleReminderAction`:
+- **Done** — `tasksRepo.markDone`, clears any pending action, honest reply naming the task.
+- **Snooze** — reschedules the *reminder's own fire time* only (`tasksRepo.rescheduleReminder`, clears
+  `reminder_sent_at` so the next sweep fires it again) — never touches the calendar event. A duration in
+  the same reply (button tap OR typed, e.g. "snooze in an hour") resolves inline via the new
+  `parseSnoozeDuration` (a small fixed phrase table — hour/minute counts, "tomorrow morning", "tonight",
+  "next week" — not a general date parser, same scope discipline as `parseCorrectedTime`); with nothing
+  recognizable, parks `reminder_pending_action = 'snooze'` and asks "Snooze until when?", resolved by
+  the next bare reply.
+- **Reschedule** — moves the *underlying calendar event* (reuses F1's `applyDateReschedule`), never the
+  reminder's own fire time — deliberately two distinct actions, never conflated. Declines gracefully
+  ("did you mean Snooze instead?") when the reminder has no linked calendar event. A target in the same
+  reply (`resolveReplyDate` + `parseCorrectedTime`) resolves it in one shot; otherwise parks
+  `reminder_pending_action = 'reschedule'` and asks "Move the event to when?"
+
+**A real gap caught while testing, fixed before shipping:** `isSnoozeReply`/`isRescheduleReply`
+(`commands.js`) originally used the same strict "whole message must reduce to just the trigger word"
+matching as `isDoneReply` — but Snooze and Reschedule's own inline-target case ("snooze in an hour",
+"reschedule to Saturday 10am") *depends on* extra text following the trigger. Since Reschedule has no
+button at all, that strict matcher made the one-shot case completely unreachable except via the (nonexistent)
+button — a bare "reschedule" typed alone would ask, but the natural "reschedule to Friday 5pm" in one
+message would silently fall through to the honest-failure reply instead. Fixed by loosening those two
+matchers to "starts with the trigger phrase" (`looseWordMatch`) — safe to loosen because they're only
+ever checked against an already-routed reminder reply (quoted or parked), never against a general
+incoming message the way `isYesNoAnswer`/`isBareTimeAnswer` are.
+
+**Routing priority** in `pipeline.js`: a quoted reply to a reminder (`replyToReminderTaskId`, from
+`context.id`) routes at the same priority as the existing extraction-log quote check, before commands,
+before any LLM call. A *parked* pending ask (Snooze/Reschedule's own follow-up question) resolves via a
+bare, unquoted reply too — lowest priority among all the bare-reply checks (after bare-time-answer,
+bare-person-correction, disambiguation-number, yes/no-rule-confirmation), since a pending reminder ask
+is rarer than those. A bare "done"/"snooze"/"reschedule" typed with **no quote and no prior parked ask**
+is not specially routed — WhatsApp's button taps and an explicit swipe-reply both carry `context.id`,
+which covers the two real interaction patterns; a stray unprompted "done" with neither is, correctly,
+treated as a fresh message.
+
+New schema columns on `tasks` (idempotent `ADD COLUMN IF NOT EXISTS`): `reminder_message_id` (the sent
+wamid, for reply routing), `reminder_pending_action` (parked "waiting on a Snooze/Reschedule answer"
+state), `reminder_sender_identifier` (denormalized from the originating message — lets the sweep and the
+pending-action lookup skip a source-log join for reminders created after this shipped; self-healing via
+a fallback lookup for older rows).
+
+`tests/regression/actionableReminders.test.js` (16 tests): `composeReminderMessage`'s fixed copy and
+button set; the free-form-vs-template payload-parity requirement itself; `resolveButtonReply` for both
+delivery shapes; the loosened matchers (bare AND trigger-plus-target, both languages, and that they
+don't fire mid-sentence); `parseSnoozeDuration`'s phrase table; and full end-to-end coverage through
+`handleIncomingMessage` — Done via button and via a quoted typed reply, Snooze inline (button and typed)
+and two-step ask-then-answer, Reschedule inline (typed, tied to a real event), two-step ask-then-answer,
+declined gracefully with no underlying event, an unrecognized reply's honest failure, and a genuinely
+new unrelated message confirmed NOT swallowed as a reminder reply. Full suite: 237/237 passing.
+
+### Product name inventory (rename readiness)
+
 Every place the literal product name "Family App" appears, so a future rename has a checklist instead of
 a fresh grep each time. Found via `grep -rniI "family app|familyapp|family-app|family_app"` across the
 whole repo (excluding `node_modules`/`dist`/`.git`). Grouped by how costly each is to change.

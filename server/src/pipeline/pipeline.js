@@ -11,7 +11,7 @@ import * as tasksRepo from '../repositories/tasks.js';
 import * as botConfigRepo from '../repositories/botConfig.js';
 import * as standingRulesRepo from '../repositories/standingRules.js';
 import { evaluateRules } from '../rules/engine.js';
-import { matchCommand, helpReply, formatTaskList, parseCorrectedTime, parseCorrectedTimeRange, isBareTimeAnswer, bareDisambiguationChoice, isYesNoAnswer, isCancelIntent } from './commands.js';
+import { matchCommand, helpReply, formatTaskList, parseCorrectedTime, parseCorrectedTimeRange, isBareTimeAnswer, bareDisambiguationChoice, isYesNoAnswer, isCancelIntent, isDoneReply, isSnoozeReply, isRescheduleReply, parseSnoozeDuration } from './commands.js';
 import {
   factsFromCandidate,
   confirmReply,
@@ -48,6 +48,7 @@ import {
   formatRulesList,
   findConflicts,
   formatConflictNote,
+  formatLocalDateTime,
   calendarErrorReply,
 } from './classify.js';
 import { scheduleReminder } from './reminders.js';
@@ -85,7 +86,7 @@ async function withRetry(fn, { attempts = 3, baseDelayMs = 200 } = {}) {
  * @param {boolean} [deps.calendarConnected] - A1: lets a read-back query give a clean "connect Calendar first" reply instead of a raw API failure
  */
 export async function handleIncomingMessage(message, deps) {
-  const { familyId, externalMessageId, senderIdentifier, text, replyToExtractionLogId, wasForwarded } = message;
+  const { familyId, externalMessageId, senderIdentifier, text, replyToExtractionLogId, replyToReminderTaskId, buttonReplyId, wasForwarded } = message;
   const { pool, llmExtract, calendar, messenger, timeZone = 'UTC', familyMembers = [], senderFamilyMember = null, calendarConnected = true } = deps;
 
   // 1. Write-ahead log — the instant the "webhook fires", before anything else.
@@ -97,6 +98,18 @@ export async function handleIncomingMessage(message, deps) {
   // 2. Correction-reply path — not a command, not a rule match.
   if (replyToExtractionLogId) {
     return handleCorrection({ log, replyToExtractionLogId, text, calendar, messenger, senderIdentifier, pool, timeZone, familyMembers, familyId });
+  }
+
+  // 2a. F2 — a reply (tapped button or plain text) quoting a bot-sent
+  // reminder message. webhook.js already resolved the quote's context.id
+  // to a task the same way it resolves extraction_log quotes — unambiguous
+  // by construction, so this runs at the same priority as the correction-
+  // reply path just above, before commands, before the LLM.
+  if (replyToReminderTaskId) {
+    const task = await tasksRepo.findById(replyToReminderTaskId, pool);
+    if (task) {
+      return handleReminderAction({ log, task, buttonReplyId, text, calendar, messenger, senderIdentifier, pool, timeZone, familyId });
+    }
   }
 
   // 2b. Commands check — hardcoded, before gate rules, before any LLM call.
@@ -198,6 +211,20 @@ export async function handleIncomingMessage(message, deps) {
       if (pendingRule) {
         return resolveStandingRule({ log, pendingRule, yesNo, messenger, senderIdentifier, pool });
       }
+    }
+  }
+
+  // 3g. F2 — completes a parked reminder-action ask ("Snooze until when?",
+  // "Move the event to when?") when the reply comes back WITHOUT quoting
+  // the reminder (most people don't swipe-reply to every message). Lowest
+  // priority among the bare-reply checks on purpose: a pending snooze/
+  // reschedule ask is rarer than a pending needs_time question or a
+  // standing-rule confirmation, so those all get first claim on an
+  // ambiguous bare reply before this fallback ever runs.
+  if (!replyToExtractionLogId && !replyToReminderTaskId) {
+    const pendingTask = await tasksRepo.findRecentPendingReminderAction({ familyId, senderIdentifier }, pool);
+    if (pendingTask) {
+      return handleReminderAction({ log, task: pendingTask, buttonReplyId: null, text, calendar, messenger, senderIdentifier, pool, timeZone, familyId });
     }
   }
 
@@ -920,22 +947,100 @@ async function applyPersonCorrection({ log, original, matchedMember, calendar, m
 // exactly: an explicit stored end_time keeps that same clock end time on
 // the new day (preserving duration, rolling to the next day for an
 // overnight range); otherwise a 1-hour block.
+// `newDate` may be null (F2's reminder-reschedule reply can give just a new
+// time, "reschedule to 6pm", meaning "same day") — defaults to the event's
+// own current date in that case; F1's own quoted-reply caller always has a
+// real newDate already (resolveReplyDate found one before calling this).
 async function applyDateReschedule({ log, original, newDate, newTime, calendar, messenger, senderIdentifier, pool, timeZone }) {
   const candidate = original.ai_candidate || {};
+  const date = newDate || candidate.date;
   const time = newTime || candidate.time || '09:00';
-  const updatedCandidate = { ...candidate, date: newDate, time };
+  const updatedCandidate = { ...candidate, date, time };
   const end = candidate.end_time
-    ? { date: candidate.end_time <= time ? addDays(newDate, 1) : newDate, time: candidate.end_time }
-    : addOneHour(newDate, time);
+    ? { date: candidate.end_time <= time ? addDays(date, 1) : date, time: candidate.end_time }
+    : addOneHour(date, time);
   await calendar.updateEvent(original.resulting_event_ref.external_id, {
-    start: { dateTime: `${newDate}T${time}:00`, timeZone },
+    start: { dateTime: `${date}T${time}:00`, timeZone },
     end: { dateTime: `${end.date}T${end.time}:00`, timeZone },
   });
   await extractionLogRepo.updateState(original.id, { state: 'corrected', aiCandidate: updatedCandidate }, pool);
   await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
-  const reply = `Moved — ${updatedCandidate.title || 'that'} to ${newDate}${newTime ? ` ${newTime}` : ''} ✅`;
+  const reply = `Moved — ${updatedCandidate.title || 'that'} to ${date}${newTime ? ` ${newTime}` : ''} ✅`;
   await messenger.send(senderIdentifier, reply);
   return { outcome: 'corrected', original, updatedCandidate, reply, log };
+}
+
+// F2 (actionable reminders) — a reply to a fired reminder message,
+// resolved by pipeline.js's own steps 2a/3g to either a tapped button's id
+// or a plain word. Three actions, always the same regardless of which of
+// those routes got here: Done (mark the task done), Snooze (reschedule the
+// REMINDER only, never the calendar event), Reschedule (move the
+// underlying calendar EVENT, if there is one — these are deliberately two
+// different actions per the backlog's own explicit warning, never
+// conflated). Snooze/Reschedule are two-step when no duration/target is
+// given in the same message: park `reminder_pending_action` and ask, the
+// same "hold a pending state, resolve it on the next bare reply" shape
+// every other parked-state flow in this file already uses.
+function reminderSubject(title) {
+  return (title || '').replace(/^Reminder:\s*/i, '') || 'that';
+}
+
+async function handleReminderAction({ log, task, buttonReplyId, text, calendar, messenger, senderIdentifier, pool, timeZone, familyId }) {
+  if (buttonReplyId === 'reminder_done' || isDoneReply(text)) {
+    await tasksRepo.markDone(task.id, pool);
+    await tasksRepo.setPendingReminderAction(task.id, null, pool);
+    await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+    const reply = `Marked done — ${reminderSubject(task.title)} ✅`;
+    await messenger.send(senderIdentifier, reply);
+    return { outcome: 'reminder_action', action: 'done', task, reply, log };
+  }
+
+  const isSnoozeTurn = buttonReplyId === 'reminder_snooze' || isSnoozeReply(text) || task.reminder_pending_action === 'snooze';
+  if (isSnoozeTurn) {
+    const snoozeUntil = parseSnoozeDuration(text, new Date().toISOString(), timeZone);
+    if (!snoozeUntil) {
+      await tasksRepo.setPendingReminderAction(task.id, 'snooze', pool);
+      await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+      const reply = 'Snooze until when? (e.g. "in an hour", "tomorrow morning", "next week")';
+      await messenger.send(senderIdentifier, reply);
+      return { outcome: 'reminder_action', action: 'snooze_pending', task, reply, log };
+    }
+    await tasksRepo.rescheduleReminder(task.id, snoozeUntil, pool);
+    await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+    const reply = `Snoozed — I'll remind you again at ${formatLocalDateTime(snoozeUntil, timeZone)} ✅`;
+    await messenger.send(senderIdentifier, reply);
+    return { outcome: 'reminder_action', action: 'snoozed', task, reply, log };
+  }
+
+  const isRescheduleTurn = buttonReplyId === 'reminder_reschedule' || isRescheduleReply(text) || task.reminder_pending_action === 'reschedule';
+  if (isRescheduleTurn) {
+    const sourceLog = task.source_extraction_log_id ? await extractionLogRepo.findById(task.source_extraction_log_id, pool) : null;
+    if (sourceLog?.resulting_event_ref?.provider !== 'google') {
+      await tasksRepo.setPendingReminderAction(task.id, null, pool);
+      await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+      const reply = "This reminder isn't tied to a calendar event — did you mean Snooze instead?";
+      await messenger.send(senderIdentifier, reply);
+      return { outcome: 'reminder_action', action: 'reschedule_declined', task, reply, log };
+    }
+    const targetDate = resolveReplyDate(text, todayInTimeZone(timeZone));
+    const targetTime = parseCorrectedTime(text);
+    if (!targetDate && !targetTime) {
+      await tasksRepo.setPendingReminderAction(task.id, 'reschedule', pool);
+      await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+      const reply = 'Move the event to when?';
+      await messenger.send(senderIdentifier, reply);
+      return { outcome: 'reminder_action', action: 'reschedule_pending', task, reply, log };
+    }
+    await tasksRepo.setPendingReminderAction(task.id, null, pool);
+    return applyDateReschedule({ log, original: sourceLog, newDate: targetDate, newTime: targetTime, calendar, messenger, senderIdentifier, pool, timeZone });
+  }
+
+  // Recognized as a reply to a reminder (routed here at all) but the
+  // content didn't match any of the three actions — honest, not silent.
+  await extractionLogRepo.updateState(log.id, { state: 'stopped' }, pool);
+  const reply = 'I didn\'t catch an action there — reply "Done", "Snooze", or "Reschedule".';
+  await messenger.send(senderIdentifier, reply);
+  return { outcome: 'reminder_action_failed', task, reply, log };
 }
 
 // Shared tail of both follow-up routes (no-quote "8:30" in step 3b, and a

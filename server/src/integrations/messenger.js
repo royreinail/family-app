@@ -60,6 +60,112 @@ export async function send(to, text, opts = {}) {
   return res.json();
 }
 
+// F2 (actionable reminders) — the pure wire-format builders, extracted
+// specifically so the backlog's own explicit requirement ("add a test
+// asserting both renderers produce the same button set and labels for the
+// same reminder record") is actually checkable without a real network
+// call, same reasoning buildSystemPrompt is pulled out of the real LLM
+// call for. Neither send function below invents any shape of its own past
+// these two.
+export function buildInteractiveButtonsPayload(to, composed) {
+  return {
+    messaging_product: 'whatsapp',
+    to,
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      body: { text: composed.bodyText },
+      action: {
+        buttons: composed.buttons.map((b) => ({ type: 'reply', reply: { id: b.id, title: b.title } })),
+      },
+    },
+  };
+}
+
+export function buildReminderTemplatePayload(to, composed) {
+  return {
+    messaging_product: 'whatsapp',
+    to,
+    type: 'template',
+    template: {
+      name: REMINDER_TEMPLATE_NAME,
+      language: { code: REMINDER_TEMPLATE_LANGUAGE },
+      components: [
+        { type: 'body', parameters: [{ type: 'text', parameter_name: REMINDER_TEMPLATE_PARAM_NAME, text: composed.innerText }] },
+        ...composed.buttons.map((b, index) => ({
+          type: 'button',
+          sub_type: 'quick_reply',
+          index: String(index),
+          parameters: [{ type: 'payload', payload: b.id }],
+        })),
+      ],
+    },
+  };
+}
+
+// Free-form interactive message, the primary path: allowed inside the 24h
+// window with no template approval, so this is what most reminders
+// actually use (they only need the template fallback when neither parent
+// has messaged that day). `composed` is reminderMessage.js's
+// composeReminderMessage(task) output — this adapter owns nothing about
+// the reminder's own structure, only how to shape it for the wire.
+export async function sendReminderButtons(to, composed, opts = {}) {
+  const { phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID, token = process.env.WHATSAPP_SYSTEM_USER_TOKEN } = opts;
+  if (!phoneNumberId || !token) {
+    console.log(`[messenger:noop:interactive] -> ${to}: ${composed.bodyText}`);
+    return { ok: true, noop: true };
+  }
+  const res = await fetch(`https://graph.facebook.com/${GRAPH_API_VERSION}/${phoneNumberId}/messages`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(buildInteractiveButtonsPayload(to, composed)),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    if (isReengagementWindowError(body)) {
+      console.warn(`WhatsApp interactive send to ${to} fell outside the 24h window — retrying as button template "${REMINDER_TEMPLATE_NAME}"`);
+      return sendReminderButtonTemplate(to, composed, opts);
+    }
+    throw new Error(`WhatsApp interactive send failed (${res.status}): ${body}`);
+  }
+  return res.json();
+}
+
+// F2 — the approved-template counterpart to sendReminderButtons, required
+// outside the 24h window. The template's own fixed copy (wrapper text +
+// the two quick-reply buttons themselves) is baked into what Meta already
+// approved — this only ever supplies the body VARIABLE and each button's
+// PAYLOAD, never re-describes the button labels (Meta owns those once
+// approved; composed.buttons is only consulted for the id/index pairing
+// and payload — reminderMessage.js's REMINDER_BUTTONS is what has to stay
+// in sync with the approved template's actual button set, not this call).
+export async function sendReminderButtonTemplate(to, composed, { phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID, token = process.env.WHATSAPP_SYSTEM_USER_TOKEN } = {}) {
+  if (!phoneNumberId || !token) {
+    console.log(`[messenger:noop:button-template] -> ${to}: ${composed.bodyText}`);
+    return { ok: true, noop: true };
+  }
+  const res = await fetch(`https://graph.facebook.com/${GRAPH_API_VERSION}/${phoneNumberId}/messages`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(buildReminderTemplatePayload(to, composed)),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    // Same "fallback itself can fail too" reality as the existing plain
+    // sendTemplate — until the button edit is actually approved by Meta
+    // (it was PENDING as of this build), this call fails predictably; a
+    // normal, logged error, not a new failure mode.
+    throw new Error(`WhatsApp button template send failed (${res.status}): ${body}`);
+  }
+  return res.json();
+}
+
 export function isReengagementWindowError(rawBody) {
   try {
     return JSON.parse(rawBody)?.error?.code === REENGAGEMENT_ERROR_CODE;

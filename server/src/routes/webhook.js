@@ -9,6 +9,7 @@ import * as familiesRepo from '../repositories/families.js';
 import * as familyMembersRepo from '../repositories/familyMembers.js';
 import * as extractionLogRepo from '../repositories/extractionLog.js';
 import * as sourceMappingsRepo from '../repositories/sourceMappings.js';
+import * as tasksRepo from '../repositories/tasks.js';
 import { handleIncomingMessage } from '../pipeline/pipeline.js';
 import { todayInTimeZone } from '../pipeline/classify.js';
 import * as calendarIntegration from '../integrations/calendar.js';
@@ -53,6 +54,26 @@ export function resolveImageMediaRef(message) {
 export function resolveAudioMediaRef(message) {
   if (message?.type === 'audio' && message.audio?.id) {
     return { id: message.audio.id, mimeType: message.audio.mime_type };
+  }
+  return null;
+}
+
+// F2 (actionable reminders) — a tapped button's payload, whichever of the
+// two delivery shapes it came back as: a free-form interactive reply
+// (`message.type === 'interactive'`, `.interactive.button_reply`) or an
+// approved-template quick-reply (`message.type === 'button'`,
+// `.button.payload`). Both carry the SAME `id`s reminderMessage.js's
+// REMINDER_BUTTONS defined ('reminder_done'/'reminder_snooze') regardless
+// of which path sent the original message — pipeline.js's
+// handleReminderAction doesn't need to know or care which one this is.
+// Pure and exported for the same reason resolveImageMediaRef/
+// resolveAudioMediaRef are.
+export function resolveButtonReply(message) {
+  if (message?.type === 'interactive' && message.interactive?.type === 'button_reply') {
+    return { id: message.interactive.button_reply.id, title: message.interactive.button_reply.title };
+  }
+  if (message?.type === 'button' && message.button?.payload) {
+    return { id: message.button.payload, title: message.button.text };
   }
   return null;
 }
@@ -104,7 +125,11 @@ export function webhookRouter() {
         return;
       }
 
-      let text = message.text?.body || message.button?.text || '';
+      // F2 — a tapped Done/Snooze button (either delivery shape) carries no
+      // message.text of its own; fall back to its own label so `text` is
+      // still meaningful even before buttonReplyId-based routing kicks in.
+      const buttonReply = resolveButtonReply(message);
+      let text = message.text?.body || message.button?.text || buttonReply?.title || '';
       const senderIdentifier = message.from;
       const replyContextId = message.context?.id ?? null;
       // Item 6 — Meta's own signal for "this message was forwarded from
@@ -145,7 +170,7 @@ export function webhookRouter() {
       // bot message is not a request needing a response — replying to every
       // reaction would be its own new annoyance, not a fix.
       const isReaction = message.type === 'reaction';
-      if (!isReaction && (imageDownloadFailed || audioRef || (!text && !image && message.type !== 'text' && message.type !== 'button'))) {
+      if (!isReaction && (imageDownloadFailed || audioRef || (!text && !image && !buttonReply && message.type !== 'text' && message.type !== 'button'))) {
         await messengerIntegration.send(
           senderIdentifier,
           imageDownloadFailed
@@ -158,12 +183,22 @@ export function webhookRouter() {
       }
 
       let replyToExtractionLogId = null;
+      let replyToReminderTaskId = null;
       if (replyContextId) {
         const original = await extractionLogRepo.findByExternalId({
           familyId: botConfig.family_id,
           externalMessageId: replyContextId,
         });
         replyToExtractionLogId = original?.id ?? null;
+        // F2 — the two lookups are mutually exclusive by construction: a
+        // reminder's own wamid was never something the bot received
+        // (extraction_log only ever indexes INCOMING message ids), so this
+        // only ever resolves when the quote is a reminder the bot sent,
+        // never double-matching the branch just above.
+        if (!replyToExtractionLogId) {
+          const task = await tasksRepo.findByReminderMessageId(replyContextId);
+          replyToReminderTaskId = task?.id ?? null;
+        }
       }
 
       const credentials = await googleCredentialsRepo.findByFamilyId(botConfig.family_id);
@@ -194,6 +229,8 @@ export function webhookRouter() {
           senderIdentifier,
           text,
           replyToExtractionLogId,
+          replyToReminderTaskId,
+          buttonReplyId: buttonReply?.id ?? null,
           wasForwarded,
         },
         {
