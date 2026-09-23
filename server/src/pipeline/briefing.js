@@ -43,12 +43,13 @@ export async function sweepDailyBriefings({ pool, calendar, messenger }) {
   for (const family of families) {
     const timeZone = family.timezone || 'UTC';
     const todayLocal = todayInTimeZone(timeZone);
-    const dueNow = shouldSendBriefingNow({
-      nowLocalHHMM: nowTimeInTimeZone(timeZone),
-      sendTime: (await standingRulesRepo.findActiveParam({ familyId: family.id, paramName: 'briefing_send_time' }, pool))?.param_value || DEFAULT_BRIEFING_TIME,
-      lastSentDateLocal: dateOnly(family.last_briefing_sent_date),
-      todayLocal,
-    });
+    const sendTime = (await standingRulesRepo.findActiveParam({ familyId: family.id, paramName: 'briefing_send_time' }, pool))?.param_value || DEFAULT_BRIEFING_TIME;
+    const nowLocalHHMM = nowTimeInTimeZone(timeZone);
+    const lastSentDateLocal = dateOnly(family.last_briefing_sent_date);
+    const dueNow = shouldSendBriefingNow({ nowLocalHHMM, sendTime, lastSentDateLocal, todayLocal });
+    // TEMP DIAGNOSTIC (Roy reported the daily briefing has never fired) —
+    // remove once the root cause is confirmed and fixed.
+    console.log(`[briefing-diag] family=${family.id} tz=${timeZone} now=${nowLocalHHMM} sendTime=${JSON.stringify(sendTime)} lastSent=${lastSentDateLocal} today=${todayLocal} dueNow=${dueNow}`);
     if (!dueNow) continue;
 
     const credentials = await googleCredentialsRepo.findByFamilyId(family.id, pool);
