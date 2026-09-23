@@ -57,10 +57,12 @@ export async function sweepDailyBriefings({ pool, calendar, messenger, force = f
     if (!dueNow) continue;
 
     const credentials = await googleCredentialsRepo.findByFamilyId(family.id, pool);
+    console.log(`[briefing-diag] family=${family.id} hasCredentials=${!!credentials}`);
     if (!credentials) continue; // nothing to brief without a connected calendar — try again tomorrow
 
     const familyMembers = await familyMembersRepo.findAllForFamily(family.id, pool);
     const parents = familyMembers.filter((m) => m.is_parent);
+    console.log(`[briefing-diag] family=${family.id} memberCount=${familyMembers.length} parentCount=${parents.length} parentIds=${JSON.stringify(parents.map((p) => p.id))}`);
     if (!parents.length) continue;
 
     // D2 — active prep associations this family has taught (C1), consulted
@@ -97,11 +99,13 @@ export async function sweepDailyBriefings({ pool, calendar, messenger, force = f
       continue;
     }
 
+    console.log(`[briefing-diag] family=${family.id} itemsForTomorrow=${items.length}`);
     for (const parent of parents) {
       const mapping = await sourceMappingsRepo.findByFamilyMemberId(
         { familyId: family.id, channelType: 'whatsapp', familyMemberId: parent.id },
         pool
       );
+      console.log(`[briefing-diag] family=${family.id} parentId=${parent.id} parentName=${parent.name} hasMapping=${!!mapping} to=${mapping?.external_identifier ?? 'none'}`);
       if (!mapping) continue; // no WhatsApp number on file for this parent — can't message them
       const relevant = items.filter((item) => isRelevantToParent(item, parent.id, familyMembers));
       const reply = formatBriefingReply(relevant, { dateLabel: tomorrow, taughtPrepRules });
