@@ -34,9 +34,13 @@ function dateOnly(value) {
  * family whose local clock has reached its configured briefing time and
  * hasn't been sent one yet today: reads tomorrow's events once, then sends
  * each connected parent their own filtered view of it (isRelevantToParent).
- * @param {{pool: import('pg').Pool, calendar: {listEvents: Function}, messenger: {send: Function}}} deps
+ * @param {{pool: import('pg').Pool, calendar: {listEvents: Function}, messenger: {send: Function}, force?: boolean}} deps
+ * `force` (TEMP — for the manual /internal/test-briefing-sweep route only,
+ * see app.js) skips the dueNow gate so a real test can run immediately
+ * instead of waiting for the actual send time. Never used by the real
+ * interval in server.js.
  */
-export async function sweepDailyBriefings({ pool, calendar, messenger }) {
+export async function sweepDailyBriefings({ pool, calendar, messenger, force = false }) {
   const families = await familiesRepo.findAllActive(pool);
   const sent = [];
 
@@ -46,10 +50,10 @@ export async function sweepDailyBriefings({ pool, calendar, messenger }) {
     const sendTime = (await standingRulesRepo.findActiveParam({ familyId: family.id, paramName: 'briefing_send_time' }, pool))?.param_value || DEFAULT_BRIEFING_TIME;
     const nowLocalHHMM = nowTimeInTimeZone(timeZone);
     const lastSentDateLocal = dateOnly(family.last_briefing_sent_date);
-    const dueNow = shouldSendBriefingNow({ nowLocalHHMM, sendTime, lastSentDateLocal, todayLocal });
+    const dueNow = force || shouldSendBriefingNow({ nowLocalHHMM, sendTime, lastSentDateLocal, todayLocal });
     // TEMP DIAGNOSTIC (Roy reported the daily briefing has never fired) —
     // remove once the root cause is confirmed and fixed.
-    console.log(`[briefing-diag] family=${family.id} tz=${timeZone} now=${nowLocalHHMM} sendTime=${JSON.stringify(sendTime)} lastSent=${lastSentDateLocal} today=${todayLocal} dueNow=${dueNow}`);
+    console.log(`[briefing-diag] family=${family.id} tz=${timeZone} now=${nowLocalHHMM} sendTime=${JSON.stringify(sendTime)} lastSent=${lastSentDateLocal} today=${todayLocal} dueNow=${dueNow} force=${force}`);
     if (!dueNow) continue;
 
     const credentials = await googleCredentialsRepo.findByFamilyId(family.id, pool);

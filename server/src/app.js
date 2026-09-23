@@ -8,6 +8,10 @@ import { botConfigRouter } from './routes/botConfig.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { calendarSettingsRouter } from './routes/calendarSettings.js';
 import { webhookRouter } from './routes/webhook.js';
+import { getPool } from './db/pool.js';
+import { sweepDailyBriefings } from './pipeline/briefing.js';
+import * as calendarIntegration from './integrations/calendar.js';
+import * as messengerIntegration from './integrations/messenger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = path.join(__dirname, '../../web/dist');
@@ -25,6 +29,24 @@ export function createApp() {
   );
 
   app.get('/healthz', (req, res) => res.json({ ok: true }));
+
+  // TEMP — Roy asked to fire a real test of the daily briefing sweep right
+  // now rather than wait for tonight's actual 20:00 trigger, to confirm
+  // (or rule out) the suspected dead-Calendar-credential root cause
+  // directly. Calls the exact same sweepDailyBriefings the interval calls,
+  // with the exact same real boundary implementations, so this is a
+  // genuine production run, not a simulation — it can and will actually
+  // send a real WhatsApp message if the sweep decides one is due.
+  // REMOVE after the test — unauthenticated, not meant to be a permanent
+  // route.
+  app.post('/internal/test-briefing-sweep', async (req, res) => {
+    try {
+      const sent = await sweepDailyBriefings({ pool: getPool(), calendar: calendarIntegration, messenger: messengerIntegration, force: true });
+      res.json({ ok: true, sent });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: String(err?.message || err) });
+    }
+  });
 
   // Required by Meta's app-publish checklist for the WhatsApp use case.
   // Plain and honest: this is a personal family tool, not a product with
